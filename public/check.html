@@ -1,0 +1,570 @@
+以下是为 check.html 增加左下角无文字刷新按钮的完整修改版。
+
+改动点：
+
+1. 增加了 .refresh-btn 样式（固定在左下角，图标，无文字，z-index: 10 确保被弹窗遮挡）。
+2. 增加了 HTML 刷新按钮及 SVG 图标。
+3. 增加了点击刷新的 JS 逻辑。
+
+你可以直接使用以下完整文件覆盖原有的 check.html。
+
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>请求访问权限</title>
+<style>
+  *{box-sizing:border-box;}
+  body{
+    margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+    font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+    background:radial-gradient(circle at 30% 20%,#1f2a44,#0b0f1a 70%);
+    color:#e8ecf5;
+  }
+  .card{
+    width:340px;padding:28px 24px;border-radius:16px;text-align:center;
+    background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
+    box-shadow:0 20px 50px rgba(0,0,0,.5);backdrop-filter:blur(8px);
+  }
+  h1{font-size:18px;font-weight:600;margin:0 0 18px;letter-spacing:1px;}
+  .hint{font-size:13px;color:#7f8ba3;margin:16px 0 8px;text-align:left;}
+  input{
+    width:100%;padding:12px 14px;font-size:16px;border-radius:10px;
+    border:1px solid rgba(255,255,255,.18);
+    background:rgba(0,0,0,.35);color:#fff;outline:none;
+  }
+  input:focus{border-color:#4fd1c5;box-shadow:0 0 0 3px rgba(79,209,197,.15);}
+  input.err{border-color:#ff6b6b;box-shadow:0 0 0 3px rgba(255,107,107,.15);}
+  input:disabled, button:disabled{opacity:.6;cursor:not-allowed;}
+  button{cursor:pointer;border:none;border-radius:10px;padding:12px;font-size:15px;font-weight:600;font-family:inherit;}
+  #requestBtn{width:100%;margin-top:16px;background:linear-gradient(135deg,#4fd1c5,#3b82f6);color:#06121a;}
+  #requestBtn:hover{filter:brightness(1.08);}
+  #requestBtn:disabled{filter:none;}
+  .msg{min-height:18px;font-size:13px;margin-top:12px;color:#ff6b6b;}
+
+  /* 左下角刷新按钮 */
+  .refresh-btn {
+    position: fixed;
+    bottom: 24px;
+    left: 24px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #7f8ba3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 10; /* 确保被弹窗层(z-index:30/50)遮挡 */
+    transition: all 0.2s ease;
+    padding: 0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(4px);
+  }
+  .refresh-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #4fd1c5;
+  }
+  .refresh-btn:active {
+    transform: scale(0.92);
+  }
+  .refresh-btn svg {
+    width: 22px;
+    height: 22px;
+    fill: currentColor;
+    transition: transform 0.3s ease;
+  }
+  .refresh-btn:hover svg {
+    transform: rotate(180deg);
+  }
+
+  .overlay{
+    position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+    background:rgba(3,6,12,.72);backdrop-filter:blur(3px);z-index:30;
+  }
+  .overlay.show{display:flex;}
+  .overlay.banned{background:#0b0f1a;backdrop-filter:none;z-index:50;}
+
+  .modal{
+    width:300px;max-width:90vw;padding:28px 22px 24px;border-radius:16px;text-align:center;
+    background:#141a26;border:1px solid rgba(255,255,255,.12);
+    box-shadow:0 24px 60px rgba(0,0,0,.6);
+  }
+  .modal.pop{animation:pop-soft .45s cubic-bezier(.34,1.56,.64,1);}
+  @keyframes pop-soft{
+    0%{transform:scale(1);}
+    45%{transform:scale(1.035);}
+    100%{transform:scale(1);}
+  }
+
+  .visual{width:72px;height:72px;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;}
+  .visual svg{width:100%;height:100%;display:block;overflow:visible;}
+  .ring-rotor{transform-origin:36px 36px;transform-box:view-box;animation:ring-spin 1.1s linear infinite;}
+  @keyframes ring-spin{to{transform:rotate(360deg);}}
+  .ring{fill:none;stroke:#4fd1c5;stroke-width:5;stroke-linecap:round;}
+  .ring-check{stroke-dasharray:131.95 200;stroke-dashoffset:0;opacity:1;
+    transition:stroke-dasharray .45s cubic-bezier(.2,.8,.2,1),stroke-dashoffset .45s cubic-bezier(.2,.8,.2,1);}
+  .ring-cross{stroke-dasharray:131.95 200;stroke-dashoffset:0;opacity:1;
+    transition:stroke-dasharray .55s cubic-bezier(.2,.8,.2,1),stroke-dashoffset .55s cubic-bezier(.2,.8,.2,1);}
+  .check{fill:none;stroke:#4fd1c5;stroke-width:5;stroke-linecap:round;stroke-linejoin:round;
+    stroke-dasharray:68;stroke-dashoffset:68;transition:stroke-dashoffset .45s cubic-bezier(.2,.8,.2,1) .10s;}
+  .cross1,.cross2{fill:none;stroke:#ff6b6b;stroke-width:5;stroke-linecap:round;stroke-dasharray:60;stroke-dashoffset:60;}
+  .cross1{transition:stroke-dashoffset .35s cubic-bezier(.2,.8,.2,1) .25s;}
+  .cross2{transition:stroke-dashoffset .35s cubic-bezier(.2,.8,.2,1) .45s;}
+
+  .visual.success .ring-rotor{animation-play-state:paused;}
+  .visual.success .ring-check{stroke-dasharray:0 200;stroke-dashoffset:131.95;
+    animation:fade-out-after .01s linear .45s forwards;}
+  .visual.success .ring-cross{opacity:0;}
+  .visual.success .check{stroke-dashoffset:0;}
+
+  .visual.rejected .ring-rotor{animation-play-state:paused;}
+  .visual.rejected .ring-check{opacity:0;}
+  .visual.rejected .ring-cross{stroke-dasharray:0 200;stroke-dashoffset:153.94;
+    animation:fade-out-after .01s linear .55s forwards;}
+  .visual.rejected .cross1{stroke-dashoffset:0;}
+  .visual.rejected .cross2{stroke-dashoffset:0;}
+
+  @keyframes fade-out-after{to{opacity:0;}}
+
+  .modal h3{margin:0 0 12px;font-size:16px;color:#e8ecf5;font-weight:600;transition:color .3s ease;}
+  .status-text{margin:0 0 18px;font-size:14px;line-height:1.6;color:#9ff0e9;
+    word-break:break-all;min-height:20px;transition:color .3s ease;}
+  .status-text b{color:#ffb3b3;font-weight:600;}
+
+  .btns{display:flex;gap:10px;}
+  .btns:empty{display:none;}
+  .btns button{flex:1;}
+  .btn-primary{background:linear-gradient(135deg,#4fd1c5,#3b82f6);color:#06121a;}
+  .btn-primary:hover{filter:brightness(1.08);}
+  .btn-ghost{background:rgba(255,255,255,.1);color:#dbe3f2;}
+  .btn-ghost:hover{background:rgba(255,255,255,.18);}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>请求访问权限</h1>
+  <div class="hint">设备名称</div>
+  <input id="deviceName" type="text" maxlength="100" autocomplete="off" placeholder="例如：我的手机">
+  <button id="requestBtn">请 求 权 限</button>
+  <div class="msg" id="msg"></div>
+</div>
+
+<!-- 左下角刷新按钮 -->
+<button id="refreshBtn" class="refresh-btn" title="刷新页面">
+  <svg viewBox="0 0 24 24">
+    <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+  </svg>
+</button>
+
+<div class="overlay" id="statusOverlay">
+  <div class="modal" id="statusModal">
+    <div class="visual" id="visual">
+      <svg viewBox="0 0 72 72" aria-hidden="true">
+        <g class="ring-rotor">
+          <path class="ring ring-check" d="M 36 8 A 28 28 0 1 1 8 36"></path>
+          <path class="ring ring-cross" d="M 36 8 A 28 28 0 1 1 16.2 16.2"></path>
+        </g>
+        <path class="check" d="M 8 36 L 24 52 L 56 20"></path>
+        <path class="cross1" d="M 16.2 16.2 L 55.8 55.8"></path>
+        <path class="cross2" d="M 55.8 16.2 L 16.2 55.8"></path>
+      </svg>
+    </div>
+    <h3 id="statusTitle">等待管理员审核</h3>
+    <p class="status-text" id="statusText"></p>
+    <div class="btns" id="statusBtns"></div>
+  </div>
+</div>
+
+<div class="overlay banned" id="bannedOverlay">
+  <div class="modal">
+    <h3>本设备已被封禁</h3>
+    <p class="status-text" style="margin-bottom:8px;">原因：<b id="bannedReasonText">原因未给出</b></p>
+    <p class="status-text" id="bannedTimeText" style="color:#f6ad55;margin-bottom:0;"></p>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var API_BASE  = 'https://devauth.us.ci'; // 统一使用这个域名
+  var HOME_URL  = 'https://devauth.us.ci/index.html';
+  var API_REQ   = API_BASE + '/api/request_access';
+  var API_CHECK = API_BASE + '/api/check';
+  var API_STREAM= API_BASE + '/api/stream';
+  var TOKEN_KEY = 'device_token';
+  var NAME_KEY  = 'device_name';
+  var SESSION_KEY = 'access_session';
+
+  var input        = document.getElementById('deviceName');
+  var btn          = document.getElementById('requestBtn');
+  var msgEl        = document.getElementById('msg');
+  var statusOv     = document.getElementById('statusOverlay');
+  var statusModal  = document.getElementById('statusModal');
+  var visual       = document.getElementById('visual');
+  var statusTitle  = document.getElementById('statusTitle');
+  var statusText   = document.getElementById('statusText');
+  var statusBtns   = document.getElementById('statusBtns');
+  var bannedOv     = document.getElementById('bannedOverlay');
+  var bannedReasonEl = document.getElementById('bannedReasonText');
+  var refreshBtn   = document.getElementById('refreshBtn');
+
+  var currentES = null;
+  var state = 'idle';
+
+  function getToken(){try{return localStorage.getItem(TOKEN_KEY);}catch(e){return null;}}
+  function saveToken(t){try{localStorage.setItem(TOKEN_KEY,t);}catch(e){}}
+  function clearToken(){try{localStorage.removeItem(TOKEN_KEY);}catch(e){}}
+  function saveName(n){try{localStorage.setItem(NAME_KEY,n);}catch(e){}}
+  function saveSession(o){try{localStorage.setItem(SESSION_KEY,JSON.stringify(o));}catch(e){}}
+  function loadSession(){
+    try{
+      var raw=localStorage.getItem(SESSION_KEY);
+      if(!raw)return null;
+      var o=JSON.parse(raw);
+      if(o&&o.poll_key)return o;
+    }catch(e){}
+    return null;
+  }
+  function clearSession(){try{localStorage.removeItem(SESSION_KEY);}catch(e){}}
+
+  function goHome(){
+    try{window.location.replace(HOME_URL);}
+    catch(e){try{window.location.href=HOME_URL;}catch(e2){}}
+  }
+
+  function pulseModal(){
+    statusModal.classList.remove('pop');
+    void statusModal.offsetWidth;
+    statusModal.classList.add('pop');
+  }
+
+  function closeES(){
+    if(currentES){
+      try{currentES.close();}catch(e){}
+      currentES=null;
+    }
+  }
+
+  function showBanned(reason, banUntil){
+    state='banned';
+    closeES();
+    statusOv.classList.remove('show');
+    clearSession();
+    
+    bannedReasonEl.textContent=
+      (reason&&String(reason).trim()!=='')?reason:'原因未给出';
+      
+    var timeEl = document.getElementById('bannedTimeText');
+    if (banUntil) {
+      timeEl.textContent = '解封时间：' + banUntil;
+    } else {
+      timeEl.textContent = '解封时间：永久封禁';
+    }
+
+    bannedOv.classList.add('show');
+    input.disabled=true;
+    btn.disabled=true;
+    btn.textContent='请 求 权 限';
+    document.documentElement.style.overflow='hidden';
+    document.body.style.overflow='hidden';
+  }
+
+  function showLoading(name){
+    if(state==='banned')return;
+    state='loading';
+    visual.className='visual';
+    statusTitle.textContent='等待管理员审核';
+    statusTitle.style.color='#e8ecf5';
+    statusText.textContent=name||'';
+    statusText.style.color='#9ff0e9';
+    statusBtns.innerHTML='';
+    statusOv.classList.add('show');
+  }
+
+  function showApproved(token){
+    if(token)saveToken(token);
+    clearSession();
+    state='approved';
+    visual.className='visual success';
+    statusTitle.textContent='验证通过';
+    statusTitle.style.color='#e8ecf5';
+    statusText.textContent='是否前往首页？';
+    statusText.style.color='#cbd5e8';
+
+    statusBtns.innerHTML=
+      '<button class="btn-primary" id="btnGoHome">是</button>'+
+      '<button class="btn-ghost" id="btnStay">否</button>';
+
+    document.getElementById('btnGoHome').addEventListener('click',goHome);
+    document.getElementById('btnStay').addEventListener('click',function(){
+      statusOv.classList.remove('show');
+      state='idle';
+      btn.disabled=false;
+      btn.textContent='请 求 权 限';
+    });
+
+    statusOv.classList.add('show');
+    pulseModal();
+  }
+
+  function showRejected(reason){
+    state='rejected';
+    clearSession();
+    visual.className='visual rejected';
+    statusTitle.textContent='申请被拒绝';
+    statusTitle.style.color='#ffb3b3';
+
+    statusText.textContent='';
+    statusText.appendChild(document.createTextNode('原因：'));
+    var b=document.createElement('b');
+    b.textContent=(reason&&String(reason).trim()!=='')?reason:'原因未给出';
+    statusText.appendChild(b);
+    statusText.style.color='#cbd5e8';
+
+    statusBtns.innerHTML='<button class="btn-primary" id="btnRetry">重新申请</button>';
+    document.getElementById('btnRetry').addEventListener('click',function(){
+      statusOv.classList.remove('show');
+      state='idle';
+      btn.disabled=false;
+      btn.textContent='请 求 权 限';
+      msgEl.textContent='';
+      input.focus();
+    });
+
+    statusOv.classList.add('show');
+    pulseModal();
+  }
+
+  function showDenied(title,reason){
+    state='rejected';
+    visual.className='visual rejected';
+    statusTitle.textContent=title;
+    statusTitle.style.color='#ffb3b3';
+
+    statusText.textContent='';
+    statusText.appendChild(document.createTextNode('原因：'));
+    var b=document.createElement('b');
+    b.textContent=(reason&&String(reason).trim()!=='')?reason:'原因未给出';
+    statusText.appendChild(b);
+    statusText.style.color='#cbd5e8';
+
+    statusBtns.innerHTML='<button class="btn-primary" id="btnDeniedOk">知道了</button>';
+    document.getElementById('btnDeniedOk').addEventListener('click',function(){
+      statusOv.classList.remove('show');
+      state='idle';
+      btn.disabled=false;
+      btn.textContent='请 求 权 限';
+      msgEl.textContent='';
+      input.focus();
+    });
+
+    statusOv.classList.add('show');
+    pulseModal();
+  }
+
+  function startSSE(session){
+    if(state==='banned')return;
+    closeES();
+    showLoading(session.name||'');
+
+    var params=new URLSearchParams();
+    params.set('poll_key',session.poll_key);
+    if(session.request_id)params.set('request_id',session.request_id);
+
+    var url=API_STREAM+'?'+params.toString();
+    var es=new EventSource(url, { withCredentials: true });
+    currentES=es;
+
+    es.addEventListener('pending',function(){/* 保持等待 */});
+
+    es.addEventListener('approved',function(e){
+      var data=JSON.parse(e.data||'{}');
+      if(data.token){
+        closeES();
+        showApproved(data.token);
+      }
+    });
+
+    es.addEventListener('rejected',function(e){
+      var data=JSON.parse(e.data||'{}');
+      closeES();
+      showRejected(data.reason);
+    });
+
+    es.addEventListener('banned',function(e){
+      var data=JSON.parse(e.data||'{}');
+      closeES();
+      showBanned(data.reason, data.ban_until);
+    });
+
+    es.addEventListener('expired',function(e){
+      var data=JSON.parse(e.data||'{}');
+      closeES();
+      clearSession();
+      statusOv.classList.remove('show');
+      state='idle';
+      btn.disabled=false;
+      btn.textContent='请 求 权 限';
+      msgEl.textContent=data.error||'令牌已过期，请重新申请';
+      msgEl.style.color='#ff6b6b';
+    });
+
+    es.addEventListener('failed',function(e){
+      var data=JSON.parse(e.data||'{}');
+      closeES();
+      clearSession();
+      statusOv.classList.remove('show');
+      state='idle';
+      btn.disabled=false;
+      btn.textContent='请 求 权 限';
+      msgEl.textContent=data.error||'连接异常';
+      msgEl.style.color='#ff6b6b';
+    });
+
+    es.onerror=function(){
+      if(es.readyState===EventSource.CLOSED){
+        currentES=null;
+        if(state==='loading'){
+          statusOv.classList.remove('show');
+          state='idle';
+          btn.disabled=false;
+          btn.textContent='请 求 权 限';
+          msgEl.textContent='连接中断，请重试';
+          msgEl.style.color='#ff6b6b';
+        }
+      }
+    };
+  }
+
+  async function requestAccess(){
+    if(state==='banned'||state==='loading')return;
+
+    var name=input.value.trim();
+    if(name===''){
+      input.classList.add('err');
+      msgEl.textContent='请输入设备名称';
+      msgEl.style.color='#ff6b6b';
+      return;
+    }
+    input.classList.remove('err');
+    msgEl.textContent='';
+    saveName(name);
+
+    btn.disabled=true;
+    btn.textContent='提交中…';
+
+    var form=new URLSearchParams();
+    form.append('action','request');
+    form.append('device_name',name);
+
+    try{
+      var res=await fetch(API_REQ,{
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:form.toString(),
+        credentials:'include',
+        cache:'no-store'
+      });
+      var data=await res.json();
+
+      if(data.banned===true){
+        showBanned(data.reason, data.ban_until);
+        return;
+      }
+
+      if(data.success&&data.poll_key){
+        var session={
+          poll_key:data.poll_key,
+          request_id:data.request_id||null,
+          name:name
+        };
+        saveSession(session);
+        btn.textContent='请 求 权 限';
+        startSSE(session);
+      }else{
+        btn.disabled=false;
+        btn.textContent='请 求 权 限';
+        msgEl.textContent=data.error||'申请失败';
+        msgEl.style.color='#ff6b6b';
+      }
+    }catch(e){
+      btn.disabled=false;
+      btn.textContent='请 求 权 限';
+      msgEl.textContent='网络错误，请重试';
+      msgEl.style.color='#ff6b6b';
+    }
+  }
+
+  btn.addEventListener('click',requestAccess);
+  input.addEventListener('input',function(){
+    input.classList.remove('err');
+    msgEl.textContent='';
+  });
+  input.addEventListener('keydown',function(e){
+    if(e.key==='Enter')requestAccess();
+  });
+
+  refreshBtn.addEventListener('click', function() {
+    window.location.reload();
+  });
+
+  window.addEventListener('pagehide',closeES);
+
+  (async function init(){
+    var session=loadSession();
+    if(session){
+      startSSE(session);
+      return;
+    }
+
+    var token=getToken();
+    if(token){
+      try{
+        var form=new URLSearchParams();
+        form.append('token',token);
+        var res=await fetch(API_CHECK,{
+          method:'POST',
+          headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:form.toString(),
+          credentials:'include',
+          cache:'no-store'
+        });
+        var cdata=await res.json();
+
+        if(cdata.valid===true){
+          showApproved(token);
+          return;
+        }
+        if(cdata.banned===true){
+          showBanned(cdata.reason, cdata.ban_until);
+          return;
+        }
+        if(cdata.revoked===true){
+          clearToken();
+          showDenied('权限已撤销',cdata.reason);
+          return;
+        }
+        clearToken();
+      }catch(e){/* 保留 token */}
+    }
+
+    try{
+      var savedName=localStorage.getItem(NAME_KEY);
+      if(savedName)input.value=savedName;
+    }catch(e){}
+
+    if(state!=='banned')input.focus();
+  })();
+
+})();
+</script>
+</body>
+</html>
+```

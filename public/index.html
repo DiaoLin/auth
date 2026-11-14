@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>网址导航</title>
+
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #6a11cb 100%); padding: 20px;
+  }
+  .card {
+    width: 100%; max-width: 640px; background: rgba(255,255,255,0.12);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.25); border-radius: 24px; padding: 40px 32px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.35); text-align: center; color: #fff;
+  }
+  h1 { margin: 0 0 8px; font-size: 28px; font-weight: 600; letter-spacing: 1px; }
+  .subtitle { margin: 0 0 28px; font-size: 14px; color: rgba(255,255,255,0.7); }
+  .input-group { display: flex; gap: 10px; margin-bottom: 30px; }
+  #urlInput {
+    flex: 1; min-width: 0; padding: 14px 18px; font-size: 16px; color: #fff;
+    background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 12px; outline: none; transition: all 0.25s ease;
+  }
+  #urlInput::placeholder { color: rgba(255,255,255,0.55); }
+  #urlInput:focus { background: rgba(255,255,255,0.25); border-color: rgba(255,255,255,0.7); box-shadow: 0 0 0 4px rgba(255,255,255,0.12); }
+  #goBtn {
+    padding: 14px 28px; font-size: 16px; font-weight: 600; color: #1e3c72; background: #fff;
+    border: none; border-radius: 12px; cursor: pointer; transition: transform 0.15s ease, box-shadow 0.25s ease;
+  }
+  #goBtn:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(0,0,0,0.3); }
+  #goBtn:active { transform: translateY(0); }
+  .quick-title { font-size: 13px; color: rgba(255,255,255,0.65); margin-bottom: 14px; letter-spacing: 2px; }
+  .quick-links { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
+  .quick-btn {
+    display: flex; align-items: center; gap: 8px; padding: 12px 24px; font-size: 15px; font-weight: 500;
+    color: #fff; text-decoration: none; background: rgba(255,255,255,0.16);
+    border: 1px solid rgba(255,255,255,0.28); border-radius: 50px; cursor: pointer; transition: all 0.25s ease;
+  }
+  .quick-btn:hover { background: rgba(255,255,255,0.32); transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0,0,0,0.25); }
+  .quick-btn:active { transform: translateY(-1px); }
+  .quick-btn .icon { font-size: 18px; }
+  .baidu:hover { background: #2932e1; border-color: #2932e1; }
+  .kuaishou:hover { background: #ff4906; border-color: #ff4906; }
+  .deepseek:hover { background: #4d6bfe; border-color: #4d6bfe; }
+
+  .modal-mask {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(10,15,40,0.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    opacity: 0; visibility: hidden; transition: opacity 0.25s ease, visibility 0.25s ease;
+    z-index: 1000; padding: 20px;
+  }
+  .modal-mask.show { opacity: 1; visibility: visible; }
+  .modal-card {
+    width: 100%; max-width: 380px; background: linear-gradient(160deg, #ffffff 0%, #eef2ff 100%);
+    border-radius: 22px; padding: 34px 28px 28px; text-align: center; color: #1e293b;
+    box-shadow: 0 25px 60px rgba(0,0,0,0.4); transform: translateY(18px) scale(0.96);
+    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .modal-mask.show .modal-card { transform: translateY(0) scale(1); }
+  .modal-icon { font-size: 46px; margin-bottom: 10px; }
+  .modal-card h2 { margin: 0 0 10px; font-size: 21px; font-weight: 700; color: #1e293b; }
+  .modal-card p { margin: 0 0 26px; font-size: 14px; line-height: 1.7; color: #64748b; }
+  .modal-actions { display: flex; gap: 12px; }
+  .modal-actions button {
+    flex: 1; padding: 13px 0; font-size: 15px; font-weight: 600; border: none; border-radius: 12px;
+    cursor: pointer; transition: all 0.2s ease; font-family: inherit;
+  }
+  .btn-stay { color: #1e3c72; background: #e0e7ff; }
+  .btn-stay:hover { background: #c7d2fe; transform: translateY(-1px); }
+  .btn-leave { color: #fff; background: linear-gradient(135deg, #4d6bfe, #6a11cb); box-shadow: 0 6px 16px rgba(77,107,254,0.4); }
+  .btn-leave:hover { transform: translateY(-1px); box-shadow: 0 10px 22px rgba(77,107,254,0.5); }
+  .modal-actions button:active { transform: translateY(0); }
+
+  @media (max-width: 480px) {
+    .card { padding: 28px 18px; }
+    h1 { font-size: 22px; }
+    .input-group { flex-direction: column; }
+    #goBtn { width: 100%; }
+    .modal-card { padding: 28px 20px 22px; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="card">
+    <h1>🌐 网址导航</h1>
+    <p class="subtitle">输入网址，一键前往</p>
+    <div class="input-group">
+      <input type="text" id="urlInput" placeholder="请输入网址，例如 www.baidu.com" autocomplete="off" spellcheck="false">
+      <button id="goBtn">前往</button>
+    </div>
+    <div class="quick-title">快 速 访 问</div>
+    <div class="quick-links">
+      <a class="quick-btn baidu" href="https://www.baidu.com"><span class="icon">🔍</span>百度</a>
+      <a class="quick-btn kuaishou" href="https://www.kuaishou.com"><span class="icon">🎬</span>快手</a>
+      <a class="quick-btn deepseek" href="https://chat.deepseek.com"><span class="icon">🤖</span>DeepSeek</a>
+    </div>
+  </div>
+
+  <div class="modal-mask" id="modalMask">
+    <div class="modal-card">
+      <div class="modal-icon">🥺</div>
+      <h2>确定要返回吗？</h2>
+      <p>离开后需要重新打开这个导航页哦，确定要离开吗？</p>
+      <div class="modal-actions">
+        <button class="btn-stay" id="stayBtn">再逛逛</button>
+        <button class="btn-leave" id="leaveBtn">确定离开</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const input = document.getElementById('urlInput');
+  const goBtn = document.getElementById('goBtn');
+  const modalMask = document.getElementById('modalMask');
+  const stayBtn = document.getElementById('stayBtn');
+  const leaveBtn = document.getElementById('leaveBtn');
+  const STORAGE_KEY = 'nav_last_url';
+
+  let leaving = false;
+
+  const saved = sessionStorage.getItem(STORAGE_KEY);
+  if (saved) input.value = saved;
+
+  // 初始历史：E0（本页）← E1（哨兵）
+  if (!history.state || !history.state.navGuard) {
+    history.pushState({ navGuard: true }, '', location.href);
+  }
+
+  const isOnSentinel = () => history.state && history.state.navGuard;
+  const openModal = () => modalMask.classList.add('show');
+  const closeModal = () => modalMask.classList.remove('show');
+
+  stayBtn.addEventListener('click', closeModal);
+  modalMask.addEventListener('click', e => { if (e.target === modalMask) closeModal(); });
+
+  leaveBtn.addEventListener('click', () => {
+    closeModal();
+    leaving = true;
+    history.back();   // 退到 E0
+  });
+
+  // 核心：每次 popstate 都问自己"还在哨兵上吗？"
+  // 不在 → 说明被退走了 → 立刻 go(1) 回去 + 弹窗。天然幂等，连按多少次都收敛。
+  window.addEventListener('popstate', () => {
+    if (leaving) {
+      history.back();   // 继续退，直到跨文档离开
+      return;
+    }
+    if (isOnSentinel()) {
+      // 这是我们自己 go(1) 前进回哨兵触发的，忽略
+      return;
+    }
+    // 被退到 E0 或更早：先弹窗，再前进回哨兵
+    openModal();
+    history.go(1);
+  });
+
+  // 从 bfcache 恢复（例如从百度按返回回到本页）时复位
+  window.addEventListener('pageshow', e => {
+    if (e.persisted) {
+      leaving = false;
+      closeModal();
+    }
+  });
+
+  function go() {
+    let url = input.value.trim();
+    if (!url) {
+      input.focus();
+      input.placeholder = '请先输入网址哦～';
+      return;
+    }
+    if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
+    sessionStorage.setItem(STORAGE_KEY, input.value.trim());
+    window.location.href = url;
+  }
+
+  goBtn.addEventListener('click', go);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  input.addEventListener('input', () => { input.placeholder = '请输入网址，例如 www.baidu.com'; });
+</script>
+
+</body>
+</html>
