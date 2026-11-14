@@ -1,0 +1,17 @@
+{
+  "name": "whitelist-system",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "gen-env": "node gen-env.js",
+    "init-db": "node -e \"import('./db.js').then(m=>m.initDb()).then(()=>{console.log('DB ready');process.exit(0)}).catch(e=>{console.error(e);process.exit(1)})\""
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.19.2",
+    "pg": "^8.11.5"
+  }
+}
