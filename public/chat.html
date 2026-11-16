@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>聊天室</title>
+<style>
+  :root {
+    --bg: #0b0f1a; --panel: #141a26; --card: rgba(255,255,255,.06);
+    --border: rgba(255,255,255,.12); --text: #e8ecf5; --text2: #9aa7c0;
+    --accent: #4fd1c5; --danger: #ff6b6b;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;height:100vh;display:flex;font-family:-apple-system,sans-serif;background:var(--bg);color:var(--text);overflow:hidden;}
+  
+  /* 侧边栏 */
+  .sidebar { width: 280px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+  .sidebar-head { padding: 16px; border-bottom: 1px solid var(--border); }
+  .sidebar-head h2 { margin: 0 0 10px; font-size: 18px; }
+  .alias-box { display: flex; gap: 8px; margin-bottom: 10px; }
+  .alias-box input { flex:1; background: rgba(0,0,0,.3); border: 1px solid var(--border); color: #fff; padding: 6px 10px; border-radius: 6px; outline: none; font-size: 13px; }
+  .alias-box button { background: var(--accent); color: #000; border: none; border-radius: 6px; padding: 0 12px; font-weight: bold; cursor: pointer; }
+  .btn-new { width: 100%; padding: 10px; background: rgba(255,255,255,.1); color: #fff; border: none; border-radius: 8px; cursor: pointer; margin-top: 8px; }
+  .btn-new:hover { background: rgba(255,255,255,.15); }
+  
+  .room-list { flex: 1; overflow-y: auto; padding: 10px; }
+  .room-item { padding: 12px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+  .room-item:hover { background: rgba(255,255,255,.08); }
+  .room-item.active { background: rgba(79,209,197,.15); color: var(--accent); }
+  .room-item .tag { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,.1); }
+  
+  /* 聊天主区 */
+  .main { flex: 1; display: flex; flex-direction: column; background: var(--bg); }
+  .chat-header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--panel); }
+  .chat-header h3 { margin: 0; font-size: 18px; }
+  .chat-messages { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+  
+  .msg { display: flex; flex-direction: column; max-width: 70%; }
+  .msg.self { align-self: flex-end; align-items: flex-end; }
+  .msg.other { align-self: flex-start; }
+  .msg-meta { font-size: 12px; color: var(--text2); margin-bottom: 4px; padding: 0 4px; }
+  .msg-bubble { padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; word-break: break-word; }
+  .msg.self .msg-bubble { background: var(--accent); color: #06121a; border-bottom-right-radius: 2px; }
+  .msg.other .msg-bubble { background: var(--panel); border: 1px solid var(--border); border-bottom-left-radius: 2px; }
+  
+  .chat-input { padding: 16px 24px; border-top: 1px solid var(--border); background: var(--panel); display: flex; gap: 12px; }
+  .chat-input input { flex: 1; padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border); background: rgba(0,0,0,.3); color: #fff; outline: none; font-size: 14px; }
+  .chat-input button { padding: 0 24px; background: var(--accent); color: #06121a; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
+  .chat-input button:disabled { opacity: 0.5; cursor: not-allowed; }
+  
+  .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; color: var(--text2); }
+</style>
+</head>
+<body>
+
+<!-- 引入 auth.js，防封禁、防无效 token -->
+<script src="./auth.js"></script>
+
+<div class="sidebar">
+  <div class="sidebar-head">
+    <h2>聊天室</h2>
+    <div class="alias-box">
+      <input type="text" id="aliasInput" placeholder="设置显示别名" maxlength="20">
+      <button id="saveAliasBtn">保存</button>
+    </div>
+    <button class="btn-new" id="btnNewGroup">+ 新建群组</button>
+    <button class="btn-new" id="btnNewPrivate">+ 发起私聊</button>
+  </div>
+  <div class="room-list" id="roomList"></div>
+</div>
+
+<div class="main">
+  <div id="chatView" style="display:none; flex:1; flex-direction:column;">
+    <div class="chat-header">
+      <h3 id="chatTitle"></h3>
+      <span id="chatStatus" style="font-size:12px;color:var(--text2);">连接中...</span>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input">
+      <input type="text" id="msgInput" placeholder="输入消息..." autocomplete="off">
+      <button id="sendBtn">发送</button>
+    </div>
+  </div>
+  <div class="empty-state" id="emptyState">
+    <h3>未选择聊天</h3>
+    <p>从左侧选择或创建一个聊天室开始对话</p>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  // 配置：将此处替换为你的后端域名（如果前端和后端同域，用 location.origin）
+  const API_BASE = 'https://devauth.us.ci'; 
+  const WS_BASE = API_BASE.replace(/^http/, 'ws');
+  
+  const TOKEN_KEY = 'device_token';
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) {
+    window.location.replace('./check.html');
+    return;
+  }
+
+  let ws = null;
+  let currentRoomId = null;
+  let rooms = [];
+
+  const roomListEl = document.getElementById('roomList');
+  const chatView = document.getElementById('chatView');
+  const emptyState = document.getElementById('emptyState');
+  const chatTitle = document.getElementById('chatTitle');
+  const chatMessages = document.getElementById('chatMessages');
+  const msgInput = document.getElementById('msgInput');
+  const sendBtn = document.getElementById('sendBtn');
+  const aliasInput = document.getElementById('aliasInput');
+
+  // 统一的 Fetch 封装
+  async function apiFetch(path, options = {}) {
+    const headers = options.headers || {};
+    headers['Authorization'] = 'Bearer ' + token;
+    options.headers = headers;
+    const res = await fetch(API_BASE + path, options);
+    if (res.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+      window.location.replace('./check.html');
+      throw new Error('未授权');
+    }
+    return res;
+  }
+
+  // 1. 初始化别名
+  async function loadAlias() {
+    try {
+      const res = await apiFetch('/api/chat/alias');
+      const data = await res.json();
+      aliasInput.value = data.alias || '';
+    } catch (e) {}
+  }
+
+  document.getElementById('saveAliasBtn').addEventListener('click', async () => {
+    const alias = aliasInput.value.trim();
+    if (!alias) return alert('别名不能为空');
+    try {
+      await apiFetch('/api/chat/alias', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alias })
+      });
+      alert('别名已更新');
+    } catch (e) { alert('设置失败'); }
+  });
+
+  // 2. 加载聊天室列表
+  async function loadRooms() {
+    try {
+      const res = await apiFetch('/api/chat/rooms');
+      const data = await res.json();
+      rooms = data.rooms || [];
+      renderRooms();
+    } catch (e) {}
+  }
+
+  function renderRooms() {
+    roomListEl.innerHTML = '';
+    rooms.forEach(r => {
+      const div = document.createElement('div');
+      div.className = 'room-item' + (currentRoomId === r.id ? ' active' : '');
+      
+      let title = r.type === 'group' ? r.name : '私聊';
+      if (r.type === 'private') {
+        title = '私聊'; // 私聊房间名由后端隐藏，前端显示为“私聊”
+      }
+
+      div.innerHTML = `
+        <span>${title}</span>
+        <span class="tag">${r.type === 'group' ? '群组' : '私聊'}</span>
+      `;
+      div.addEventListener('click', () => selectRoom(r));
+      roomListEl.appendChild(div);
+    });
+  }
+
+  // 3. 新建群组
+  document.getElementById('btnNewGroup').addEventListener('click', async () => {
+    const name = prompt('请输入群组名称：');
+    if (!name) return;
+    try {
+      const res = await apiFetch('/api/chat/rooms/group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'name=' + encodeURIComponent(name)
+      });
+      const data = await res.json();
+      if (data.success) {
+        await loadRooms();
+        // 简单刷新，用户需重新点击加入
+      }
+    } catch (e) { alert('创建失败'); }
+  });
+
+  // 4. 发起私聊
+  document.getElementById('btnNewPrivate').addEventListener('click', async () => {
+    const target = prompt('请输入对方的设备名：');
+    if (!target) return;
+    try {
+      const res = await apiFetch('/api/chat/rooms/private', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'target_device=' + encodeURIComponent(target)
+      });
+      const data = await res.json();
+      if (data.success) {
+        await loadRooms();
+        // 自动定位到新房间
+        const room = rooms.find(r => r.id === data.room_id);
+        if (room) selectRoom(room);
+      } else {
+        alert(data.error || '发起失败');
+      }
+    } catch (e) { alert('网络错误'); }
+  });
+
+  // 5. 选择聊天室
+  async function selectRoom(room) {
+    currentRoomId = room.id;
+    renderRooms(); // 刷新高亮
+    
+    emptyState.style.display = 'none';
+    chatView.style.display = 'flex';
+    chatTitle.textContent = room.type === 'group' ? room.name : '私聊';
+    chatMessages.innerHTML = '<div style="text-align:center;color:#666;font-size:12px;">加载历史消息...</div>';
+
+    // 加载历史消息
+    try {
+      const res = await apiFetch(`/api/chat/rooms/${room.id}/messages`);
+      const data = await res.json();
+      chatMessages.innerHTML = '';
+      data.messages.forEach(appendMessage);
+      scrollToBottom();
+    } catch (e) {
+      chatMessages.innerHTML = '<div style="text-align:center;color:var(--danger)">加载失败</div>';
+    }
+
+    // 通知 WebSocket 加入此房间
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: 'join', roomId: room.id }));
+    }
+  }
+
+  // 6. WebSocket 连接
+  function connectWS() {
+    if (ws) ws.close();
+    const wsUrl = `${WS_BASE}/api/chat/ws?token=${token}`;
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      document.getElementById('chatStatus').textContent = '已连接';
+      document.getElementById('chatStatus').style.color = 'var(--accent)';
+      // 如果当前有选中的房间，重新加入
+      if (currentRoomId) {
+        ws.send(JSON.stringify({ type: 'join', roomId: currentRoomId }));
+      }
+    };
+
+    ws.onclose = () => {
+      document.getElementById('chatStatus').textContent = '连接断开，重连中...';
+      document.getElementById('chatStatus').style.color = 'var(--danger)';
+      setTimeout(connectWS, 3000);
+    };
+
+    ws.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      if (data.type === 'new_message' && data.roomId === currentRoomId) {
+        appendMessage(data.message);
+        scrollToBottom();
+      }
+    };
+  }
+
+  // 7. 发送消息
+  function sendMessage() {
+    const content = msgInput.value.trim();
+    if (!content || !currentRoomId) return;
+    
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ 
+        type: 'message', 
+        roomId: currentRoomId, 
+        content: content 
+      }));
+      msgInput.value = '';
+    } else {
+      alert('网络未连接，请稍后再试');
+    }
+  }
+
+  sendBtn.addEventListener('click', sendMessage);
+  msgInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') sendMessage();
+  });
+
+  // 8. UI 辅助函数
+  function appendMessage(msg) {
+    const isSelf = msg.sender_name === getMyDeviceName();
+    const div = document.createElement('div');
+    div.className = 'msg ' + (isSelf ? 'self' : 'other');
+    
+    // 格式化时间
+    const time = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    // 名字显示：设备名 (别名) 或 仅设备名
+    let displayName = msg.sender_name;
+    if (msg.sender_alias && msg.sender_alias !== msg.sender_name) {
+      displayName += ` (${msg.sender_alias})`;
+    }
+
+    div.innerHTML = `
+      <div class="msg-meta">${displayName} · ${time}</div>
+      <div class="msg-bubble">${escapeHtml(msg.content)}</div>
+    `;
+    chatMessages.appendChild(div);
+  }
+
+  function scrollToBottom() {
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // 从 localStorage 或 token 解析出当前设备名
+  function getMyDeviceName() {
+    // auth.js 在验证 token 时，可能会把设备名存在某处，或者自己发请求确认
+    // 这里简单处理：由于接口返回中有，我们可以直接从内存取。
+    // 实际上后端返回消息包含了 sender_name，所以判断自己需要一个存储
+    return localStorage.getItem('device_name') || '';
+  }
+
+  // 启动初始化
+  loadAlias();
+  loadRooms().then(() => {
+    connectWS();
+  });
+
+})();
+</script>
+</body>
+</html>
