@@ -495,22 +495,6 @@
 </div>
 
 <script>
-const API_BASE = '';
-
-// 统一的请求封装
-async function apiFetch(path, options = {}) {
-  options.credentials = 'include';
-
-  const res = await fetch(API_BASE + path, options);
-  if (res.status === 401) {
-    document.getElementById('adminBox').style.display = 'none';
-    document.getElementById('loginBox').style.display = 'block';
-    document.getElementById('loginMsg').textContent = '登录已过期，请重新登录';
-    throw new Error('未授权');
-  }
-  return res;
-}
-
 var loginBtn  = document.getElementById('loginBtn');
 var logoutBtn = document.getElementById('logoutBtn');
 var passwordEl= document.getElementById('password');
@@ -531,18 +515,15 @@ async function login() {
   form.append('password', pwd);
 
   try {
-    var res = await fetch(API_BASE + '/api/auth', {
+    var res = await fetch('./api/auth', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form.toString(),
-      credentials: 'include'
+      credentials: 'same-origin'
     });
     var data = await res.json();
-    if (data.success) {
-      showAdmin();
-    } else {
-      msg.textContent = data.error || '登录失败';
-    }
+    if (data.success) showAdmin();
+    else msg.textContent = data.error || '登录失败';
   } catch (e) {
     msg.textContent = '网络错误';
   }
@@ -550,7 +531,10 @@ async function login() {
 
 async function logout() {
   try {
-    await apiFetch('/api/admin/logout', { method: 'POST' });
+    await fetch('./api/admin/logout', {
+      method: 'POST',
+      credentials: 'same-origin'
+    });
   } catch (e) {}
   stopReqAutoRefresh();
   document.getElementById('adminBox').style.display = 'none';
@@ -606,9 +590,11 @@ function stopReqAutoRefresh() {
 
 async function loadRequests() {
   try {
-    var res = await apiFetch('/api/admin/requests?status=' + encodeURIComponent(reqFilter), {
+    var res = await fetch('./api/admin/requests?status=' + encodeURIComponent(reqFilter), {
+      credentials: 'same-origin',
       cache: 'no-store'
     });
+    if (res.status === 401) { logout(); return; }
     var data = await res.json();
     allRequests = data.requests || [];
     renderRequests();
@@ -696,11 +682,13 @@ async function startApprove(requestId) {
     form.append('action', 'preview');
     form.append('request_id', requestId);
 
-    var res = await apiFetch('/api/admin/requests', {
+    var res = await fetch('./api/admin/requests', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString()
+      body: form.toString(),
+      credentials: 'same-origin'
     });
+    if (res.status === 401) { logout(); return; }
     var data = await res.json();
 
     if (data.blocked === true) {
@@ -827,11 +815,13 @@ async function submitApprove() {
   apOk.textContent = '处理中…';
 
   try {
-    var res = await apiFetch('/api/admin/requests', {
+    var res = await fetch('./api/admin/requests', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString()
+      body: form.toString(),
+      credentials: 'same-origin'
     });
+    if (res.status === 401) { closeApprove(); logout(); return; }
     var data = await res.json();
 
     if (data.success) {
@@ -894,11 +884,13 @@ async function doReject() {
   form.append('reason', rejectReasonEl.value.trim());
 
   try {
-    var res = await apiFetch('/api/admin/requests', {
+    var res = await fetch('./api/admin/requests', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString()
+      body: form.toString(),
+      credentials: 'same-origin'
     });
+    if (res.status === 401) { closeReject(); logout(); return; }
     var data = await res.json();
     if (data.success) {
       closeReject();
@@ -923,7 +915,8 @@ document.getElementById('refreshBtn').addEventListener('click', function () { lo
 
 async function loadDevices(showTip) {
   try {
-    var res = await apiFetch('/api/admin/devices', { cache: 'no-store' });
+    var res = await fetch('./api/admin/devices', { credentials: 'same-origin', cache: 'no-store' });
+    if (res.status === 401) { logout(); return; }
     var data = await res.json();
     allDevices = data.devices || [];
     renderDevices();
@@ -1096,11 +1089,13 @@ async function doRevoke() {
   form.append('reason', revokeReasonEl.value.trim());
 
   try {
-    var res = await apiFetch('/api/admin/revoke', {
+    var res = await fetch('./api/admin/revoke', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString()
+      body: form.toString(),
+      credentials: 'same-origin'
     });
+    if (res.status === 401) { closeRevoke(); logout(); return; }
     var data = await res.json();
     if (data.success) {
       closeRevoke();
@@ -1181,11 +1176,13 @@ async function doBan() {
   if (mode === 'temp') form.append('days', days);
 
   try {
-    var res = await apiFetch('/api/admin/ban', {
+    var res = await fetch('./api/admin/ban', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString()
+      body: form.toString(),
+      credentials: 'same-origin'
     });
+    if (res.status === 401) { closeBan(); logout(); return; }
     var data = await res.json();
     if (data.success) {
       closeBan();
@@ -1236,11 +1233,13 @@ async function doUnban() {
   form.append('device_id', unbanningId);
 
   try {
-    var res = await apiFetch('/api/admin/unban', {
+    var res = await fetch('./api/admin/unban', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString()
+      body: form.toString(),
+      credentials: 'same-origin'
     });
+    if (res.status === 401) { closeUnban(); logout(); return; }
     var data = await res.json();
     if (data.success) {
       closeUnban();
@@ -1383,11 +1382,13 @@ async function submitExtend() {
   extOk.textContent = '处理中…';
 
   try {
-    var res = await apiFetch('/api/admin/extend', {
+    var res = await fetch('./api/admin/extend', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString()
+      body: form.toString(),
+      credentials: 'same-origin'
     });
+    if (res.status === 401) { closeExtend(); logout(); return; }
     var data = await res.json();
     if (data.success) {
       closeExtend();
@@ -1412,9 +1413,7 @@ function escapeHtml(s) {
 
 (async function init() {
   try {
-    var res = await fetch(API_BASE + '/api/auth_check', {
-      credentials: 'include'
-    });
+    var res = await fetch('./api/auth_check', { credentials: 'same-origin' });
     var data = await res.json();
     if (data.logged_in) showAdmin();
   } catch (e) {}

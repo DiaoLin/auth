@@ -9,7 +9,6 @@ import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import cookieParser from 'cookie-parser';
 import cors from 'cors';
 
 /* ============================================================
@@ -20,10 +19,7 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const NODE_ENV = process.env.NODE_ENV || 'production';
 const IS_PROD = NODE_ENV === 'production';
 
-const FRONTEND_ORIGINS = (process.env.FRONTEND_ORIGINS || process.env.FRONTEND_ORIGIN || 'https://devauth.us.ci')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'https://devauth.us.ci';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -59,13 +55,6 @@ function pickSigningKey(envVal) {
 const ADMIN_PASSWORD_HASH = pickPasswordHash(process.env.ADMIN_PASSWORD_HASH);
 const ADMIN_SIGNING_KEY = pickSigningKey(process.env.ADMIN_SIGNING_KEY);
 const ADMIN_SESSION_TTL = 86400 * 7;
-const ADMIN_COOKIE_NAME = 'admin_session';
-const ADMIN_COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: IS_PROD,
-  sameSite: IS_PROD ? 'none' : 'lax',
-  path: '/',
-};
 
 if (!ADMIN_SIGNING_KEY) {
   console.warn('WARN: ADMIN_SIGNING_KEY 未设置，管理员登录与鉴权功能将不可用！');
@@ -216,13 +205,11 @@ function verifyAdminToken(token) {
 }
 
 function requireAdmin(req, res, next) {
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
-    const origin = req.get('Origin');
-    if (!origin || !FRONTEND_ORIGINS.includes(origin)) {
-      return res.status(403).json({ error: '请求来源不允许' });
-    }
+  const authHeader = req.headers.authorization || '';
+  let token = '';
+  if (authHeader.startsWith('Bearer ')) {
+    token = authHeader.slice(7);
   }
-  const token = req.cookies?.[ADMIN_COOKIE_NAME] || '';
   if (!verifyAdminToken(token)) {
     return res.status(401).json({ error: '未授权，请先登录' });
   }
@@ -282,14 +269,11 @@ app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
 app.use(cors({
-  origin(origin, callback) {
-    callback(null, Boolean(origin) && FRONTEND_ORIGINS.includes(origin));
-  },
-  credentials: true,
-  allowedHeaders: ['Content-Type']
+  origin: FRONTEND_ORIGIN,
+  credentials: true, // 虽然不用 Cookie 了，保留以防万一
+  allowedHeaders: ['Content-Type', 'Authorization'] // 允许自定义 Header
 }));
 
-app.use(cookieParser());
 app.use(express.urlencoded({ extended: false, limit: '32kb' }));
 app.use(express.json({ limit: '32kb' }));
 
@@ -478,7 +462,7 @@ app.post('/api/check', async (req, res) => {
 });
 
 /* ============================================================
- * 5.4 管理员认证 (基于 Cookie)
+ * 5.4 管理员认证 (基于 Token Header)
  * ============================================================ */
 
 function normalizeBcryptHash(h) {
@@ -497,24 +481,23 @@ app.post('/api/auth', async (req, res) => {
       return res.status(401).json({ error: '密码错误' });
     }
     const token = generateAdminToken();
-    res.cookie(ADMIN_COOKIE_NAME, token, {
-      ...ADMIN_COOKIE_OPTIONS,
-      maxAge: ADMIN_SESSION_TTL * 1000,
-    });
-    return res.json({ success: true });
+    return res.json({ success: true, token }); // 返回给前端存入 localStorage
   } catch (e) {
     return res.status(500).json({ error: '服务错误' });
   }
 });
 
 app.get('/api/auth_check', (req, res) => {
-  const token = req.cookies?.[ADMIN_COOKIE_NAME] || '';
+  const authHeader = req.headers.authorization || '';
+  let token = '';
+  if (authHeader.startsWith('Bearer ')) {
+    token = authHeader.slice(7);
+  }
   res.json({ logged_in: verifyAdminToken(token) });
 });
 
 app.post('/api/admin/logout', (req, res) => {
-  res.clearCookie(ADMIN_COOKIE_NAME, ADMIN_COOKIE_OPTIONS);
-  res.json({ success: true });
+  res.json({ success: true }); // 前端清理 localStorage 即可，服务端无需处理
 });
 
 /* ============================================================
