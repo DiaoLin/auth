@@ -4,7 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <!-- 严格的 CSP：禁止加载外部脚本，禁止向未知域名发送数据，从根源防范 XSS -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://devauth.us.ci https://api.devauth.us.ci; img-src 'self' data:; object-src 'none';">
+<<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+<script>eruda.init();</script>
+
 <title>设备管理</title>
 <style>
   :root{
