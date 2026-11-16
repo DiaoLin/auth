@@ -298,7 +298,16 @@
 </head>
 <body>
 <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-<script>eruda.init();</script>
+<script>
+eruda.init({
+  container: document.body,
+  tool: ['console','elements','network','resources']
+});
+// 强制提升eruda容器z-index到9999，压过所有弹窗遮罩
+const el = document.querySelector('.eruda-container');
+if(el) el.style.zIndex = '9999';
+</script>
+
 <div class="wrap">
 
   <div id="loginBox" class="card">
