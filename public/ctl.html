@@ -1,0 +1,1423 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>设备管理</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg-1: #141a26;
+    --card-bg: rgba(255,255,255,.06);
+    --card-border: rgba(255,255,255,.12);
+    --text-1: #e8ecf5;
+    --text-2: #9aa7c0;
+    --accent: #4fd1c5;
+    --accent-2: #3b82f6;
+    --danger: #ff6b6b;
+    --warn: #f6ad55;
+    --ok: #4fd1c5;
+    --ban: #c084fc;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;min-height:100vh;padding:32px 20px 48px;
+    font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+    background:radial-gradient(circle at 30% 20%,#1f2a44,#0b0f1a 70%);
+    color:var(--text-1);
+  }
+  .wrap{max-width:1180px;margin:0 auto;}
+  h1,h2,h3{font-weight:600;letter-spacing:.5px;}
+
+  .card{
+    background:var(--card-bg);
+    border:1px solid var(--card-border);
+    border-radius:16px;
+    box-shadow:0 20px 50px rgba(0,0,0,.45);
+    backdrop-filter:blur(8px);
+  }
+
+  #loginBox{max-width:340px;margin:80px auto;padding:28px 24px;text-align:center;}
+  #loginBox h2{margin:0 0 18px;font-size:18px;}
+  #loginBox input{
+    width:100%;padding:12px 14px;font-size:15px;border-radius:10px;
+    border:1px solid rgba(255,255,255,.18);
+    background:rgba(0,0,0,.35);color:#fff;outline:none;margin-bottom:12px;
+  }
+  #loginBox input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,209,197,.15);}
+  #loginBox button{
+    width:100%;padding:12px;font-size:15px;font-weight:600;border:none;
+    border-radius:10px;cursor:pointer;font-family:inherit;
+    background:linear-gradient(135deg,var(--accent),var(--accent-2));
+    color:#06121a;
+  }
+  #loginBox button:hover{filter:brightness(1.08);}
+  #loginMsg{color:var(--danger);font-size:13px;min-height:18px;margin-top:10px;}
+
+  #adminBox{display:none;}
+
+  .admin-head{
+    display:flex;justify-content:space-between;align-items:center;
+    margin-bottom:16px;
+  }
+  .admin-head h2{margin:0;font-size:20px;}
+  .admin-head button{
+    padding:8px 14px;border-radius:10px;border:none;cursor:pointer;
+    font-family:inherit;font-size:14px;
+    background:rgba(255,255,255,.1);color:#dbe3f2;
+  }
+  .admin-head button:hover{background:rgba(255,255,255,.18);}
+
+  #mainTabs{
+    display:flex;gap:6px;margin-bottom:18px;
+    border-bottom:1px solid rgba(255,255,255,.1);
+  }
+  #mainTabs button{
+    padding:10px 20px;border:none;border-radius:10px 10px 0 0;
+    background:transparent;color:var(--text-2);
+    font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;
+    border-bottom:2px solid transparent;
+    transition:background .15s,color .15s,border-color .15s;
+  }
+  #mainTabs button:hover{color:var(--text-1);background:rgba(255,255,255,.05);}
+  #mainTabs button.active{
+    color:var(--accent);
+    border-bottom-color:var(--accent);
+    background:rgba(79,209,197,.08);
+  }
+
+  .tab-pane{display:none;}
+  .tab-pane.active{display:block;}
+
+  .section{padding:20px;margin-bottom:20px;}
+  .section h3{margin:0 0 14px;font-size:16px;}
+
+  .filter-bar{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    margin-bottom:14px;
+  }
+  .filter-bar .seg{
+    display:flex;background:rgba(0,0,0,.3);border-radius:10px;
+    padding:4px;gap:4px;flex-wrap:wrap;
+  }
+  .filter-bar .seg button{
+    padding:7px 14px;border-radius:8px;border:none;cursor:pointer;
+    font-family:inherit;font-size:13px;
+    background:transparent;color:var(--text-2);
+    transition:background .15s,color .15s;
+  }
+  .filter-bar .seg button:hover{color:var(--text-1);}
+  .filter-bar .seg button.active{
+    background:rgba(79,209,197,.2);color:#9ff0e9;
+  }
+  .filter-bar .search{
+    flex:1;min-width:180px;
+    padding:8px 12px;border-radius:10px;
+    border:1px solid rgba(255,255,255,.18);
+    background:rgba(0,0,0,.35);color:#fff;outline:none;font-size:13.5px;
+  }
+  .filter-bar .search:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,209,197,.15);}
+  .filter-bar .clear-btn{
+    padding:8px 12px;border-radius:10px;border:none;cursor:pointer;
+    font-family:inherit;font-size:13px;
+    background:rgba(255,255,255,.1);color:#dbe3f2;
+  }
+  .filter-bar .clear-btn:hover{background:rgba(255,255,255,.18);}
+  .filter-bar .count{
+    font-size:13px;color:var(--text-2);
+    margin-left:auto;white-space:nowrap;
+  }
+
+  .list-head{display:flex;align-items:center;gap:14px;margin-bottom:12px;}
+  .list-head h3{margin:0;font-size:16px;}
+  .btn-ghost{
+    padding:6px 12px;border-radius:8px;border:none;cursor:pointer;
+    font-family:inherit;font-size:13px;
+    background:rgba(255,255,255,.1);color:#dbe3f2;
+  }
+  .btn-ghost:hover{background:rgba(255,255,255,.18);}
+
+  .table-wrap{overflow-x:auto;}
+  table{width:100%;border-collapse:collapse;margin-top:4px;font-size:13.5px;}
+  thead th{
+    text-align:left;padding:10px 12px;color:var(--text-2);font-weight:600;
+    background:rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.12);
+    white-space:nowrap;
+  }
+  tbody td{
+    padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.08);
+    color:var(--text-1);white-space:nowrap;
+  }
+  tbody td.reason-cell{max-width:220px;overflow:hidden;text-overflow:ellipsis;color:var(--text-2);}
+  tbody tr:hover{background:rgba(255,255,255,.04);}
+  .status-有效{color:var(--ok);}
+  .status-已过期{color:var(--warn);}
+  .status-已吊销{color:var(--danger);}
+  .status-已封禁{color:var(--ban);}
+  .status-pending{color:var(--warn);}
+  .status-approved{color:var(--ok);}
+  .status-rejected{color:var(--danger);}
+  .empty-row td{text-align:center;color:var(--text-2);padding:24px;}
+
+  .btn-row-danger{
+    padding:5px 12px;border-radius:8px;border:none;cursor:pointer;
+    font-family:inherit;font-size:12.5px;
+    background:rgba(255,107,107,.18);color:#ffb3b3;
+  }
+  .btn-row-danger:hover{background:rgba(255,107,107,.28);}
+  .btn-row-warn{
+    padding:5px 12px;border-radius:8px;border:none;cursor:pointer;
+    font-family:inherit;font-size:12.5px;
+    background:rgba(79,209,197,.18);color:#9ff0e9;
+  }
+  .btn-row-warn:hover{background:rgba(79,209,197,.28);}
+  .btn-row-ban{
+    padding:5px 12px;border-radius:8px;border:none;cursor:pointer;
+    font-family:inherit;font-size:12.5px;
+    background:rgba(192,132,252,.2);color:#e9d5ff;
+  }
+  .btn-row-ban:hover{background:rgba(192,132,252,.32);}
+  .btn-row-unban{
+    padding:5px 12px;border-radius:8px;border:none;cursor:pointer;
+    font-family:inherit;font-size:12.5px;
+    background:rgba(79,209,197,.2);color:#9ff0e9;
+  }
+  .btn-row-unban:hover{background:rgba(79,209,197,.32);}
+  .btn-row-approve{
+    padding:5px 12px;border-radius:8px;border:none;cursor:pointer;
+    font-family:inherit;font-size:12.5px;
+    background:rgba(79,209,197,.22);color:#9ff0e9;
+  }
+  .btn-row-approve:hover{background:rgba(79,209,197,.34);}
+  .btn-row-reject{
+    padding:5px 12px;border-radius:8px;border:none;cursor:pointer;
+    font-family:inherit;font-size:12.5px;
+    background:rgba(255,107,107,.2);color:#ffb3b3;
+  }
+  .btn-row-reject:hover{background:rgba(255,107,107,.32);}
+
+  .modal-mask{
+    position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+    background:rgba(3,6,12,.72);backdrop-filter:blur(3px);z-index:99;
+  }
+  .modal-mask.show{display:flex;}
+  .modal-box{
+    width:360px;max-width:92vw;background:var(--bg-1);
+    border:1px solid rgba(255,255,255,.12);border-radius:16px;
+    padding:24px 22px;box-shadow:0 24px 60px rgba(0,0,0,.6);
+    animation:pop .18s ease-out;text-align:center;
+  }
+  @keyframes pop{from{transform:scale(.92);opacity:0}to{transform:scale(1);opacity:1}}
+  .modal-box h3{margin:0 0 14px;font-size:16px;}
+  .modal-box p{margin:0 0 14px;font-size:14px;line-height:1.6;color:var(--text-2);}
+  .modal-msg{min-height:18px;font-size:13px;color:var(--danger);margin-bottom:10px;}
+  .modal-input{
+    width:100%;padding:10px 12px;border-radius:10px;margin-bottom:14px;
+    border:1px solid rgba(255,255,255,.18);
+    background:rgba(0,0,0,.35);color:#fff;outline:none;font-size:14px;
+    font-family:inherit;
+  }
+  .modal-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,209,197,.15);}
+  .modal-btns{display:flex;gap:10px;}
+  .modal-btns button{flex:1;padding:11px;border-radius:10px;border:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;}
+  .modal-btns .btn-cancel{background:rgba(255,255,255,.1);color:#dbe3f2;}
+  .modal-btns .btn-cancel:hover{background:rgba(255,255,255,.18);}
+  .modal-btns .btn-ok{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#06121a;}
+  .modal-btns .btn-ok:hover{filter:brightness(1.08);}
+  .modal-btns .btn-ok:disabled{opacity:.6;cursor:not-allowed;filter:none;}
+  .modal-btns .btn-danger{background:linear-gradient(135deg,#f87171,#dc2626);color:#fff;}
+  .modal-btns .btn-danger:hover{filter:brightness(1.08);}
+  .modal-btns .btn-danger:disabled{opacity:.6;cursor:not-allowed;filter:none;}
+  .modal-btns .btn-ban{background:linear-gradient(135deg,#c084fc,#7c3aed);color:#fff;}
+  .modal-btns .btn-ban:hover{filter:brightness(1.08);}
+  .modal-btns .btn-ban:disabled{opacity:.6;cursor:not-allowed;filter:none;}
+
+  .modal-box.form{text-align:left;}
+  .modal-box.form label{display:block;margin:8px 0;color:var(--text-1);font-size:14px;}
+  .modal-box.form input[type="number"]{
+    width:160px;padding:8px 10px;margin:0 0 10px 22px;
+    border-radius:8px;border:1px solid rgba(255,255,255,.18);
+    background:rgba(0,0,0,.35);color:#fff;outline:none;font-size:14px;font-family:inherit;
+  }
+  .modal-box.form input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,209,197,.15);}
+  .modal-box.form .modal-btns{margin-top:8px;}
+  .modal-box.form .form-reason{margin-left:0 !important;width:100% !important;}
+
+  .date-row{
+    display:flex;align-items:center;gap:8px;
+    margin:0 0 10px 22px;
+  }
+  .date-row input[type="text"]{
+    width:170px;padding:8px 10px;margin:0;
+    border-radius:8px;border:1px solid rgba(255,255,255,.18);
+    background:rgba(0,0,0,.35);color:#fff;outline:none;
+    font-size:14px;font-family:ui-monospace,Consolas,monospace;
+    letter-spacing:.5px;
+  }
+  .date-row input[type="text"]:focus{
+    border-color:var(--accent);
+    box-shadow:0 0 0 3px rgba(79,209,197,.15);
+  }
+  .date-row input[type="text"].err{
+    border-color:var(--danger);
+    box-shadow:0 0 0 3px rgba(255,107,107,.15);
+  }
+  .date-row .pick-btn{
+    padding:8px 12px;border-radius:8px;border:none;cursor:pointer;
+    font-family:inherit;font-size:14px;line-height:1;
+    background:rgba(255,255,255,.1);color:#dbe3f2;
+  }
+  .date-row .pick-btn:hover{background:rgba(255,255,255,.18);}
+
+  .conflict-list{
+    max-height:220px;overflow:auto;text-align:left;font-size:13px;
+    margin-bottom:14px;padding:8px;border-radius:10px;
+    background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.1);
+  }
+  .conflict-item{
+    padding:8px 6px;border-bottom:1px solid rgba(255,255,255,.06);
+    color:var(--text-1);line-height:1.6;
+  }
+  .conflict-item:last-child{border-bottom:none;}
+  .conflict-item .meta{color:var(--text-2);font-size:12px;}
+
+  #keepAllBtn.active, #keepLatestBtn.active {
+    outline: 2px solid #4fd1c5;
+    outline-offset: 1px;
+  }
+
+  @media (max-width:520px){
+    body{padding:20px 12px 32px;}
+    .admin-head h2{font-size:18px;}
+    #mainTabs button{padding:9px 14px;font-size:13px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <div id="loginBox" class="card">
+    <h2>管理员登录</h2>
+    <input id="password" type="password" placeholder="请输入管理密码" autocomplete="current-password">
+    <button id="loginBtn">登 录</button>
+    <div id="loginMsg"></div>
+  </div>
+
+  <div id="adminBox">
+    <div class="admin-head">
+      <h2>控制台</h2>
+      <button id="logoutBtn">退出登录</button>
+    </div>
+
+    <div id="mainTabs">
+      <button class="active" data-tab="devices">设备管理</button>
+      <button data-tab="requests">申请列表</button>
+    </div>
+
+    <div class="tab-pane active" id="pane-devices">
+      <div class="card section">
+        <div class="list-head">
+          <h3>设备列表</h3>
+          <button id="refreshBtn" class="btn-ghost">刷新</button>
+        </div>
+
+        <div class="filter-bar">
+          <div class="seg" id="statusSeg">
+            <button data-status="all">全部</button>
+            <button class="active" data-status="有效">有效</button>
+            <button data-status="已过期">已过期</button>
+            <button data-status="已吊销">已吊销</button>
+            <button data-status="已封禁">已封禁</button>
+          </div>
+          <input id="searchInput" class="search" type="text" placeholder="搜索设备名称 / ID">
+          <button id="clearFilterBtn" class="clear-btn">清空</button>
+          <span id="filterCount" class="count"></span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>设备名称</th><th>创建时间</th>
+                <th>最后使用</th><th>过期时间</th><th>状态</th><th>原因</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="deviceBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-pane" id="pane-requests">
+      <div class="card section">
+        <div class="list-head">
+          <h3>权限申请</h3>
+          <button id="reqRefreshBtn" class="btn-ghost">刷新</button>
+        </div>
+
+        <div class="filter-bar">
+          <div class="seg" id="reqStatusSeg">
+            <button class="active" data-status="pending">待处理</button>
+            <button data-status="approved">已通过</button>
+            <button data-status="rejected">已拒绝</button>
+            <button data-status="all">全部</button>
+          </div>
+          <span id="reqCount" class="count"></span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>设备名称</th><th>申请时间</th><th>状态</th><th>处理时间</th><th>原因</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="requestBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="approveModal" class="modal-mask">
+  <div class="modal-box form">
+    <h3>通过申请</h3>
+    <p id="approveText" style="margin-top:-4px;">确定通过该申请？</p>
+
+    <div id="conflictSection" style="display:none;">
+      <p style="margin:8px 0;color:#f6ad55;font-size:13px;">
+        ⚠ 存在同名设备记录，请选择处理方式：
+      </p>
+      <div id="conflictList" class="conflict-list"></div>
+      <div style="display:flex;gap:10px;margin-bottom:14px;">
+        <button type="button" class="btn-cancel" id="keepAllBtn" style="flex:1;padding:10px;border-radius:10px;border:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;background:rgba(255,255,255,.1);color:#dbe3f2;">保留所有</button>
+        <button type="button" class="btn-ok" id="keepLatestBtn" style="flex:1;padding:10px;border-radius:10px;border:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;background:linear-gradient(135deg,#4fd1c5,#3b82f6);color:#06121a;">保留最新</button>
+      </div>
+    </div>
+
+    <label><input type="radio" name="apMode" value="days" checked> 延长天数</label>
+    <input id="apDays" type="number" min="1" max="3650" value="1">
+
+    <label><input type="radio" name="apMode" value="forever"> 永久有效</label>
+
+    <div class="modal-msg" id="apMsg"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" id="apCancel">取消</button>
+      <button class="btn-ok" id="apOk">确定通过</button>
+    </div>
+  </div>
+</div>
+
+<div id="rejectModal" class="modal-mask">
+  <div class="modal-box">
+    <h3>拒绝申请</h3>
+    <p id="rejectText">确定拒绝该申请？</p>
+    <input id="rejectReason" type="text" maxlength="255" class="modal-input" placeholder="拒绝原因（可选，会展示给用户）">
+    <div class="modal-msg" id="rejectMsg"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" id="rejectCancel">取消</button>
+      <button class="btn-danger" id="rejectOk">拒绝</button>
+    </div>
+  </div>
+</div>
+
+<div id="revokeModal" class="modal-mask">
+  <div class="modal-box">
+    <h3>吊销设备</h3>
+    <p id="revokeText">确定吊销该设备？此操作不可撤销。</p>
+    <input id="revokeReason" type="text" maxlength="255" class="modal-input" placeholder="吊销原因（可选，会展示给该设备用户）">
+    <div class="modal-msg" id="revokeMsg"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" id="revokeCancel">取消</button>
+      <button class="btn-danger" id="revokeOk">吊销</button>
+    </div>
+  </div>
+</div>
+
+<div id="banModal" class="modal-mask">
+  <div class="modal-box form">
+    <h3>封禁设备</h3>
+    <p id="banText" style="margin-top:-4px;">确定封禁该设备？该操作会封禁所有同名设备记录。</p>
+
+    <label><input type="radio" name="banMode" value="forever" checked> 永久封禁</label>
+    <label><input type="radio" name="banMode" value="temp"> 临时封禁</label>
+    <input id="banDays" type="number" min="1" max="3650" value="7" placeholder="天数">
+
+    <input id="banReason" type="text" maxlength="255"
+           class="modal-input form-reason" placeholder="封禁原因（可选，会展示给该设备用户）">
+
+    <div class="modal-msg" id="banMsg"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" id="banCancel">取消</button>
+      <button class="btn-ban" id="banOk">封禁</button>
+    </div>
+  </div>
+</div>
+
+<div id="unbanModal" class="modal-mask">
+  <div class="modal-box">
+    <h3>解封设备</h3>
+    <p id="unbanText">确定解封该设备？该操作会解封所有同名设备记录。</p>
+    <div class="modal-msg" id="unbanMsg"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" id="unbanCancel">取消</button>
+      <button class="btn-ok" id="unbanOk">解封</button>
+    </div>
+  </div>
+</div>
+
+<div id="extendModal" class="modal-mask">
+  <div class="modal-box form">
+    <h3>设备延期</h3>
+
+    <label><input type="radio" name="extMode" value="days" checked> 延长天数</label>
+    <input id="extDays" type="number" min="1" max="3650" value="30">
+
+    <label><input type="radio" name="extMode" value="date"> 指定到期日期</label>
+    <div class="date-row">
+      <input id="extDate" type="text" inputmode="numeric" autocomplete="off"
+             maxlength="10" placeholder="YYYY-MM-DD 或 YYYYMMDD">
+      <button type="button" id="extDatePickBtn" class="pick-btn" title="打开日历选择">📅</button>
+      <input id="extDateNative" type="date"
+             style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;">
+    </div>
+
+    <label><input type="radio" name="extMode" value="forever"> 设为永久有效</label>
+    <div class="modal-msg" id="extMsg"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" id="extCancel">取消</button>
+      <button class="btn-ok" id="extOk">确定</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var loginBtn  = document.getElementById('loginBtn');
+var logoutBtn = document.getElementById('logoutBtn');
+var passwordEl= document.getElementById('password');
+
+loginBtn.addEventListener('click', login);
+logoutBtn.addEventListener('click', logout);
+passwordEl.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') login();
+});
+
+async function login() {
+  var pwd = passwordEl.value;
+  var msg = document.getElementById('loginMsg');
+  msg.textContent = '';
+  if (!pwd) { msg.textContent = '请输入密码'; return; }
+
+  var form = new URLSearchParams();
+  form.append('password', pwd);
+
+  try {
+    var res = await fetch('./api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+      credentials: 'same-origin'
+    });
+    var data = await res.json();
+    if (data.success) showAdmin();
+    else msg.textContent = data.error || '登录失败';
+  } catch (e) {
+    msg.textContent = '网络错误';
+  }
+}
+
+async function logout() {
+  try {
+    await fetch('./api/admin/logout', {
+      method: 'POST',
+      credentials: 'same-origin'
+    });
+  } catch (e) {}
+  stopReqAutoRefresh();
+  document.getElementById('adminBox').style.display = 'none';
+  document.getElementById('loginBox').style.display = 'block';
+  passwordEl.value = '';
+}
+
+function showAdmin() {
+  document.getElementById('loginBox').style.display = 'none';
+  document.getElementById('adminBox').style.display = 'block';
+  switchMainTab('devices');
+}
+
+var currentTab = 'devices';
+
+function switchMainTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('#mainTabs button').forEach(function (b) {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  document.querySelectorAll('.tab-pane').forEach(function (p) {
+    p.classList.toggle('active', p.id === 'pane-' + tab);
+  });
+  stopReqAutoRefresh();
+  if (tab === 'devices') {
+    loadDevices();
+  } else if (tab === 'requests') {
+    loadRequests();
+    startReqAutoRefresh();
+  }
+}
+
+document.getElementById('mainTabs').addEventListener('click', function (e) {
+  var btn = e.target.closest('button[data-tab]');
+  if (!btn) return;
+  if (btn.dataset.tab === currentTab) return;
+  switchMainTab(btn.dataset.tab);
+});
+
+var reqFilter = 'pending';
+var reqAutoTimer = null;
+var allRequests = [];
+
+function startReqAutoRefresh() {
+  stopReqAutoRefresh();
+  reqAutoTimer = setInterval(function () {
+    if (currentTab === 'requests') loadRequests();
+  }, 15000);
+}
+function stopReqAutoRefresh() {
+  if (reqAutoTimer) { clearInterval(reqAutoTimer); reqAutoTimer = null; }
+}
+
+async function loadRequests() {
+  try {
+    var res = await fetch('./api/admin/requests?status=' + encodeURIComponent(reqFilter), {
+      credentials: 'same-origin',
+      cache: 'no-store'
+    });
+    if (res.status === 401) { logout(); return; }
+    var data = await res.json();
+    allRequests = data.requests || [];
+    renderRequests();
+  } catch (e) {}
+}
+
+function statusText(s) {
+  if (s === 'pending') return '待处理';
+  if (s === 'approved') return '已通过';
+  if (s === 'rejected') return '已拒绝';
+  return s;
+}
+
+function renderRequests() {
+  var tbody = document.getElementById('requestBody');
+  tbody.innerHTML = '';
+
+  if (allRequests.length === 0) {
+    var tr = document.createElement('tr');
+    tr.className = 'empty-row';
+    tr.innerHTML = '<td colspan="7">暂无申请</td>';
+    tbody.appendChild(tr);
+    document.getElementById('reqCount').textContent = '共 0 条';
+    return;
+  }
+
+  allRequests.forEach(function (r) {
+    var tr = document.createElement('tr');
+    var opHtml = '—';
+    if (r.status === 'pending') {
+      opHtml = '<button class="btn-row-approve btn-approve" data-id="' + r.id + '">通过</button> ' +
+               '<button class="btn-row-reject btn-reject" data-id="' + r.id + '">拒绝</button>';
+    }
+    var reason = r.reject_reason || '—';
+    var reasonTitle = r.reject_reason ? escapeHtml(r.reject_reason) : '';
+
+    tr.innerHTML =
+      '<td>' + r.id + '</td>' +
+      '<td>' + escapeHtml(r.device_name) + '</td>' +
+      '<td>' + r.created_at + '</td>' +
+      '<td class="status-' + r.status + '">' + statusText(r.status) + '</td>' +
+      '<td>' + (r.decided_at || '—') + '</td>' +
+      '<td class="reason-cell" title="' + reasonTitle + '">' + escapeHtml(reason) + '</td>' +
+      '<td>' + opHtml + '</td>';
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('reqCount').textContent = '共 ' + allRequests.length + ' 条';
+}
+
+document.getElementById('reqStatusSeg').addEventListener('click', function (e) {
+  var btn = e.target.closest('button[data-status]');
+  if (!btn) return;
+  this.querySelectorAll('button').forEach(function (b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  reqFilter = btn.dataset.status;
+  loadRequests();
+});
+
+document.getElementById('reqRefreshBtn').addEventListener('click', function () {
+  loadRequests();
+});
+
+document.getElementById('requestBody').addEventListener('click', function (e) {
+  var btn = e.target.closest('button');
+  if (!btn) return;
+  if (btn.classList.contains('btn-approve')) {
+    startApprove(parseInt(btn.dataset.id, 10));
+  } else if (btn.classList.contains('btn-reject')) {
+    openReject(parseInt(btn.dataset.id, 10));
+  }
+});
+
+var approvingRequestId = null;
+var pendingConflictPolicy = '';
+var hasConflicts = false;
+
+async function startApprove(requestId) {
+  approvingRequestId = requestId;
+  pendingConflictPolicy = '';
+  hasConflicts = false;
+
+  try {
+    var form = new URLSearchParams();
+    form.append('action', 'preview');
+    form.append('request_id', requestId);
+
+    var res = await fetch('./api/admin/requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+      credentials: 'same-origin'
+    });
+    if (res.status === 401) { logout(); return; }
+    var data = await res.json();
+
+    if (data.blocked === true) {
+      alert('无法通过：' + (data.message || '该设备名存在封禁记录'));
+      approvingRequestId = null;
+      return;
+    }
+    if (data.error) {
+      alert(data.error);
+      approvingRequestId = null;
+      return;
+    }
+
+    openApproveModal(data.conflicts || []);
+  } catch (e) {
+    alert('网络错误');
+    approvingRequestId = null;
+  }
+}
+
+function openApproveModal(conflicts) {
+  var apMsg = document.getElementById('apMsg');
+  var apOk = document.getElementById('apOk');
+  var conflictSection = document.getElementById('conflictSection');
+  var conflictListEl = document.getElementById('conflictList');
+  var keepAllBtn = document.getElementById('keepAllBtn');
+  var keepLatestBtn = document.getElementById('keepLatestBtn');
+
+  apMsg.textContent = '';
+  apOk.disabled = false;
+  apOk.textContent = '确定通过';
+  document.getElementById('apDays').value = 1;
+  document.querySelector('input[name="apMode"][value="days"]').checked = true;
+  document.getElementById('approveText').textContent =
+    '确定通过申请 #' + approvingRequestId + '？';
+
+  hasConflicts = conflicts.length > 0;
+  pendingConflictPolicy = '';
+  keepAllBtn.classList.remove('active');
+  keepLatestBtn.classList.remove('active');
+
+  if (hasConflicts) {
+    conflictSection.style.display = 'block';
+    conflictListEl.innerHTML = '';
+
+    conflicts.forEach(function (c) {
+      var status = '有效';
+      if (c.banned_at) status = '已封禁';
+      else if (c.revoked_at) status = '已吊销';
+      else if (c.expires_at && new Date(c.expires_at.replace(' ', 'T')) < new Date()) status = '已过期';
+
+      var div = document.createElement('div');
+      div.className = 'conflict-item';
+      div.innerHTML =
+        '<div>记录 #' + c.id + '</div>' +
+        '<div class="meta">创建：' + (c.created_at || '—') +
+        ' ｜ 过期：' + (c.expires_at || '永久') +
+        ' ｜ 状态：' + status + '</div>';
+      conflictListEl.appendChild(div);
+    });
+  } else {
+    conflictSection.style.display = 'none';
+  }
+
+  document.getElementById('approveModal').classList.add('show');
+}
+
+function closeApprove() {
+  approvingRequestId = null;
+  pendingConflictPolicy = '';
+  document.getElementById('approveModal').classList.remove('show');
+}
+
+document.getElementById('keepAllBtn').addEventListener('click', function () {
+  pendingConflictPolicy = 'keep_all';
+  this.classList.add('active');
+  document.getElementById('keepLatestBtn').classList.remove('active');
+  document.getElementById('apMsg').textContent = '';
+});
+
+document.getElementById('keepLatestBtn').addEventListener('click', function () {
+  pendingConflictPolicy = 'keep_latest';
+  this.classList.add('active');
+  document.getElementById('keepAllBtn').classList.remove('active');
+  document.getElementById('apMsg').textContent = '';
+});
+
+document.getElementById('apCancel').addEventListener('click', closeApprove);
+document.getElementById('apOk').addEventListener('click', submitApprove);
+
+async function submitApprove() {
+  if (!approvingRequestId) return;
+
+  var apMsg = document.getElementById('apMsg');
+  var apOk = document.getElementById('apOk');
+  apMsg.textContent = '';
+
+  if (hasConflicts && !pendingConflictPolicy) {
+    apMsg.textContent = '请先选择同名记录的处理方式';
+    return;
+  }
+
+  var mode = document.querySelector('input[name="apMode"]:checked').value;
+  var expiryValue;
+
+  if (mode === 'forever') {
+    expiryValue = 'noexp';
+  } else {
+    var days = parseInt(document.getElementById('apDays').value, 10);
+    if (!days || days < 1 || days > 3650) {
+      apMsg.textContent = '请输入 1-3650 之间的天数';
+      return;
+    }
+    expiryValue = String(days);
+  }
+
+  var form = new URLSearchParams();
+  form.append('action', 'approve');
+  form.append('request_id', approvingRequestId);
+  form.append('expiry', expiryValue);
+  if (hasConflicts) form.append('conflict_policy', pendingConflictPolicy);
+
+  apOk.disabled = true;
+  apOk.textContent = '处理中…';
+
+  try {
+    var res = await fetch('./api/admin/requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+      credentials: 'same-origin'
+    });
+    if (res.status === 401) { closeApprove(); logout(); return; }
+    var data = await res.json();
+
+    if (data.success) {
+      closeApprove();
+      loadRequests();
+      return;
+    }
+
+    if (data.blocked === true) {
+      apMsg.textContent = data.message || '该设备名存在封禁记录';
+      apOk.disabled = false;
+      apOk.textContent = '确定通过';
+      return;
+    }
+
+    apMsg.textContent = data.error || '操作失败';
+    apOk.disabled = false;
+    apOk.textContent = '确定通过';
+  } catch (e) {
+    apMsg.textContent = '网络错误';
+    apOk.disabled = false;
+    apOk.textContent = '确定通过';
+  }
+}
+
+var rejectingId = null;
+var rejectModal = document.getElementById('rejectModal');
+var rejectMsg = document.getElementById('rejectMsg');
+var rejectOk = document.getElementById('rejectOk');
+var rejectCancel = document.getElementById('rejectCancel');
+var rejectReasonEl = document.getElementById('rejectReason');
+
+rejectOk.addEventListener('click', doReject);
+rejectCancel.addEventListener('click', closeReject);
+
+function openReject(id) {
+  rejectingId = id;
+  rejectMsg.textContent = '';
+  rejectReasonEl.value = '';
+  rejectOk.disabled = false;
+  rejectOk.textContent = '拒绝';
+  document.getElementById('rejectText').textContent = '确定拒绝申请 #' + id + '？';
+  rejectModal.classList.add('show');
+}
+
+function closeReject() {
+  rejectingId = null;
+  rejectModal.classList.remove('show');
+}
+
+async function doReject() {
+  if (!rejectingId) return;
+  rejectOk.disabled = true;
+  rejectOk.textContent = '处理中…';
+  rejectMsg.textContent = '';
+
+  var form = new URLSearchParams();
+  form.append('action', 'reject');
+  form.append('request_id', rejectingId);
+  form.append('reason', rejectReasonEl.value.trim());
+
+  try {
+    var res = await fetch('./api/admin/requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+      credentials: 'same-origin'
+    });
+    if (res.status === 401) { closeReject(); logout(); return; }
+    var data = await res.json();
+    if (data.success) {
+      closeReject();
+      loadRequests();
+    } else {
+      rejectMsg.textContent = data.error || '拒绝失败';
+      rejectOk.disabled = false;
+      rejectOk.textContent = '拒绝';
+    }
+  } catch (e) {
+    rejectMsg.textContent = '网络错误';
+    rejectOk.disabled = false;
+    rejectOk.textContent = '拒绝';
+  }
+}
+
+var allDevices = [];
+var filterStatus = '有效';
+var filterKeyword = '';
+
+document.getElementById('refreshBtn').addEventListener('click', function () { loadDevices(true); });
+
+async function loadDevices(showTip) {
+  try {
+    var res = await fetch('./api/admin/devices', { credentials: 'same-origin', cache: 'no-store' });
+    if (res.status === 401) { logout(); return; }
+    var data = await res.json();
+    allDevices = data.devices || [];
+    renderDevices();
+    if (showTip) {
+      document.getElementById('filterCount').textContent = '已刷新';
+      setTimeout(updateCount, 1200);
+    }
+  } catch (e) {}
+}
+
+function renderDevices() {
+  var tbody = document.getElementById('deviceBody');
+  tbody.innerHTML = '';
+
+  var list = allDevices.filter(function (d) {
+    if (filterStatus !== 'all' && d.status !== filterStatus) return false;
+    if (filterKeyword) {
+      var kw = filterKeyword.toLowerCase();
+      var name = String(d.device_name || '').toLowerCase();
+      var idStr = String(d.id || '');
+      if (name.indexOf(kw) === -1 && idStr.indexOf(kw) === -1) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  if (list.length === 0) {
+    var tr = document.createElement('tr');
+    tr.className = 'empty-row';
+    tr.innerHTML = '<td colspan="8">没有符合条件的设备</td>';
+    tbody.appendChild(tr);
+    updateCount(list.length);
+    return;
+  }
+
+  list.forEach(function (d) {
+    var tr = document.createElement('tr');
+    var expiresAt = d.expires_at || '永久';
+    var statusClass = 'status-' + d.status;
+
+    var reasonText = '—';
+    var reasonTitle = '';
+    if (d.status === '已封禁') {
+      reasonText = d.ban_reason || '原因未给出';
+      if (d.ban_until) {
+        reasonText += '（至 ' + String(d.ban_until).substring(0, 10) + '）';
+      }
+      reasonTitle = escapeHtml(reasonText);
+    } else if (d.revoke_reason) {
+      reasonText = d.revoke_reason;
+      reasonTitle = escapeHtml(d.revoke_reason);
+    }
+
+    var opHtml;
+    if (d.status === '已封禁') {
+      opHtml = '<button class="btn-row-unban btn-unban" data-id="' + d.id + '">解封</button>';
+    } else if (d.revoked_at) {
+      opHtml = '—';
+    } else if (d.expires_at === null) {
+      opHtml = '<button class="btn-row-ban btn-ban" data-id="' + d.id + '">封禁</button> ' +
+               '<button class="btn-row-danger btn-revoke" data-id="' + d.id + '">吊销</button>';
+    } else {
+      opHtml = '<button class="btn-row-warn btn-extend" data-id="' + d.id + '">延期</button> ' +
+               '<button class="btn-row-ban btn-ban" data-id="' + d.id + '">封禁</button> ' +
+               '<button class="btn-row-danger btn-revoke" data-id="' + d.id + '">吊销</button>';
+    }
+
+    tr.innerHTML =
+      '<td>' + d.id + '</td>' +
+      '<td>' + escapeHtml(d.device_name) + '</td>' +
+      '<td>' + d.created_at + '</td>' +
+      '<td>' + (d.last_used_at || '—') + '</td>' +
+      '<td>' + expiresAt + '</td>' +
+      '<td class="' + statusClass + '">' + d.status + '</td>' +
+      '<td class="reason-cell" title="' + reasonTitle + '">' + escapeHtml(reasonText) + '</td>' +
+      '<td>' + opHtml + '</td>';
+    tbody.appendChild(tr);
+  });
+
+  updateCount(list.length);
+}
+
+function updateCount(shown) {
+  var total = allDevices.length;
+  var el = document.getElementById('filterCount');
+  if (typeof shown === 'number' && shown !== total) {
+    el.textContent = '显示 ' + shown + ' / 共 ' + total + ' 条';
+  } else {
+    el.textContent = '共 ' + total + ' 条';
+  }
+}
+
+document.getElementById('statusSeg').addEventListener('click', function (e) {
+  var btn = e.target.closest('button[data-status]');
+  if (!btn) return;
+  this.querySelectorAll('button').forEach(function (b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  filterStatus = btn.dataset.status;
+  renderDevices();
+});
+
+var searchInput = document.getElementById('searchInput');
+var searchTimer = null;
+searchInput.addEventListener('input', function () {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(function () {
+    filterKeyword = searchInput.value.trim();
+    renderDevices();
+  }, 200);
+});
+
+document.getElementById('clearFilterBtn').addEventListener('click', function () {
+  filterStatus = '有效';
+  filterKeyword = '';
+  searchInput.value = '';
+  document.querySelectorAll('#statusSeg button').forEach(function (b) {
+    b.classList.toggle('active', b.dataset.status === '有效');
+  });
+  renderDevices();
+});
+
+document.getElementById('deviceBody').addEventListener('click', function (e) {
+  var btn = e.target.closest('button');
+  if (!btn) return;
+  if (btn.classList.contains('btn-revoke')) {
+    openRevoke(parseInt(btn.dataset.id, 10));
+  } else if (btn.classList.contains('btn-extend')) {
+    openExtend(parseInt(btn.dataset.id, 10));
+  } else if (btn.classList.contains('btn-ban')) {
+    openBan(parseInt(btn.dataset.id, 10));
+  } else if (btn.classList.contains('btn-unban')) {
+    openUnban(parseInt(btn.dataset.id, 10));
+  }
+});
+
+var revokingId = null;
+var revokeModal = document.getElementById('revokeModal');
+var revokeMsg   = document.getElementById('revokeMsg');
+var revokeOk    = document.getElementById('revokeOk');
+var revokeCancel= document.getElementById('revokeCancel');
+var revokeReasonEl = document.getElementById('revokeReason');
+
+revokeOk.addEventListener('click', doRevoke);
+revokeCancel.addEventListener('click', closeRevoke);
+
+function openRevoke(id) {
+  revokingId = id;
+  revokeMsg.textContent = '';
+  revokeReasonEl.value = '';
+  revokeOk.disabled = false;
+  revokeOk.textContent = '吊销';
+  document.getElementById('revokeText').textContent = '确定吊销设备 #' + id + '？此操作仅影响当前记录。';
+  revokeModal.classList.add('show');
+}
+
+function closeRevoke() {
+  revokingId = null;
+  revokeModal.classList.remove('show');
+}
+
+async function doRevoke() {
+  if (!revokingId) return;
+  revokeOk.disabled = true;
+  revokeOk.textContent = '处理中…';
+  revokeMsg.textContent = '';
+
+  var form = new URLSearchParams();
+  form.append('device_id', revokingId);
+  form.append('reason', revokeReasonEl.value.trim());
+
+  try {
+    var res = await fetch('./api/admin/revoke', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+      credentials: 'same-origin'
+    });
+    if (res.status === 401) { closeRevoke(); logout(); return; }
+    var data = await res.json();
+    if (data.success) {
+      closeRevoke();
+      loadDevices();
+    } else {
+      revokeMsg.textContent = data.error || '吊销失败';
+      revokeOk.disabled = false;
+      revokeOk.textContent = '吊销';
+    }
+  } catch (e) {
+    revokeMsg.textContent = '网络错误';
+    revokeOk.disabled = false;
+    revokeOk.textContent = '吊销';
+  }
+}
+
+var banningId = null;
+var banModal  = document.getElementById('banModal');
+var banMsg    = document.getElementById('banMsg');
+var banOk     = document.getElementById('banOk');
+var banCancel = document.getElementById('banCancel');
+var banReasonEl = document.getElementById('banReason');
+var banDaysEl   = document.getElementById('banDays');
+
+banOk.addEventListener('click', doBan);
+banCancel.addEventListener('click', closeBan);
+
+function updateBanDaysState() {
+  var mode = document.querySelector('input[name="banMode"]:checked').value;
+  banDaysEl.disabled = (mode !== 'temp');
+  banDaysEl.style.opacity = (mode === 'temp') ? '1' : '.4';
+}
+
+document.querySelectorAll('input[name="banMode"]').forEach(function (r) {
+  r.addEventListener('change', updateBanDaysState);
+});
+
+function openBan(id) {
+  banningId = id;
+  banMsg.textContent = '';
+  banReasonEl.value = '';
+  document.getElementById('banDays').value = 7;
+  document.querySelector('input[name="banMode"][value="forever"]').checked = true;
+  updateBanDaysState();
+  banOk.disabled = false;
+  banOk.textContent = '封禁';
+  document.getElementById('banText').textContent =
+    '确定封禁设备 #' + id + '？该操作会封禁所有同名设备记录。';
+  banModal.classList.add('show');
+}
+
+function closeBan() {
+  banningId = null;
+  banModal.classList.remove('show');
+}
+
+async function doBan() {
+  if (!banningId) return;
+
+  var mode = document.querySelector('input[name="banMode"]:checked').value;
+  var days = 0;
+  if (mode === 'temp') {
+    days = parseInt(banDaysEl.value, 10);
+    if (!days || days < 1 || days > 3650) {
+      banMsg.textContent = '临时封禁天数需在 1-3650 之间';
+      return;
+    }
+  }
+
+  banOk.disabled = true;
+  banOk.textContent = '处理中…';
+  banMsg.textContent = '';
+
+  var form = new URLSearchParams();
+  form.append('device_id', banningId);
+  form.append('reason', banReasonEl.value.trim());
+  form.append('mode', mode);
+  if (mode === 'temp') form.append('days', days);
+
+  try {
+    var res = await fetch('./api/admin/ban', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+      credentials: 'same-origin'
+    });
+    if (res.status === 401) { closeBan(); logout(); return; }
+    var data = await res.json();
+    if (data.success) {
+      closeBan();
+      loadDevices();
+    } else {
+      banMsg.textContent = data.error || '封禁失败';
+      banOk.disabled = false;
+      banOk.textContent = '封禁';
+    }
+  } catch (e) {
+    banMsg.textContent = '网络错误';
+    banOk.disabled = false;
+    banOk.textContent = '封禁';
+  }
+}
+
+var unbanningId = null;
+var unbanModal  = document.getElementById('unbanModal');
+var unbanMsg    = document.getElementById('unbanMsg');
+var unbanOk     = document.getElementById('unbanOk');
+var unbanCancel = document.getElementById('unbanCancel');
+
+unbanOk.addEventListener('click', doUnban);
+unbanCancel.addEventListener('click', closeUnban);
+
+function openUnban(id) {
+  unbanningId = id;
+  unbanMsg.textContent = '';
+  unbanOk.disabled = false;
+  unbanOk.textContent = '解封';
+  document.getElementById('unbanText').textContent =
+    '确定解封设备 #' + id + '？该操作会解封所有同名设备记录。';
+  unbanModal.classList.add('show');
+}
+
+function closeUnban() {
+  unbanningId = null;
+  unbanModal.classList.remove('show');
+}
+
+async function doUnban() {
+  if (!unbanningId) return;
+  unbanOk.disabled = true;
+  unbanOk.textContent = '处理中…';
+  unbanMsg.textContent = '';
+
+  var form = new URLSearchParams();
+  form.append('device_id', unbanningId);
+
+  try {
+    var res = await fetch('./api/admin/unban', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+      credentials: 'same-origin'
+    });
+    if (res.status === 401) { closeUnban(); logout(); return; }
+    var data = await res.json();
+    if (data.success) {
+      closeUnban();
+      loadDevices();
+    } else {
+      unbanMsg.textContent = data.error || '解封失败';
+      unbanOk.disabled = false;
+      unbanOk.textContent = '解封';
+    }
+  } catch (e) {
+    unbanMsg.textContent = '网络错误';
+    unbanOk.disabled = false;
+    unbanOk.textContent = '解封';
+  }
+}
+
+var extendingId = null;
+var extendModal = document.getElementById('extendModal');
+var extMsg      = document.getElementById('extMsg');
+var extOk       = document.getElementById('extOk');
+var extCancel   = document.getElementById('extCancel');
+var extDateEl   = document.getElementById('extDate');
+var extDateNative = document.getElementById('extDateNative');
+var extDatePickBtn = document.getElementById('extDatePickBtn');
+
+extOk.addEventListener('click', submitExtend);
+extCancel.addEventListener('click', closeExtend);
+
+function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+function parseDateInput(raw) {
+  var s = String(raw || '').trim();
+  if (!s) return null;
+  var m = s.match(/^(\d{4})[-\/.]?(\d{1,2})[-\/.]?(\d{1,2})$/);
+  if (!m) return null;
+  var y = parseInt(m[1], 10);
+  var mo = parseInt(m[2], 10);
+  var d = parseInt(m[3], 10);
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  var dt = new Date(y, mo - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) {
+    return null;
+  }
+  return y + '-' + pad2(mo) + '-' + pad2(d);
+}
+
+extDateEl.addEventListener('input', function () {
+  extDateEl.classList.remove('err');
+  extMsg.textContent = '';
+  var v = extDateEl.value;
+  var digits = v.replace(/[^\d]/g, '');
+  if (/^\d{8}$/.test(v)) {
+    extDateEl.value = digits.slice(0, 4) + '-' + digits.slice(4, 6) + '-' + digits.slice(6, 8);
+  }
+});
+
+extDateEl.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') submitExtend();
+});
+
+extDatePickBtn.addEventListener('click', function () {
+  var cur = parseDateInput(extDateEl.value);
+  extDateNative.value = cur || '';
+
+  try {
+    if (typeof extDateNative.showPicker === 'function') {
+      extDateNative.showPicker();
+    } else {
+      extDateNative.style.position = 'static';
+      extDateNative.style.width = '1px';
+      extDateNative.style.height = '1px';
+      extDateNative.style.opacity = '0';
+      extDateNative.focus();
+      extDateNative.click();
+      setTimeout(function () {
+        extDateNative.style.position = 'absolute';
+        extDateNative.style.left = '-9999px';
+      }, 0);
+    }
+  } catch (e) {
+    try { extDateNative.focus(); extDateNative.click(); } catch (e2) {}
+  }
+});
+
+extDateNative.addEventListener('change', function () {
+  if (extDateNative.value) {
+    extDateEl.value = extDateNative.value;
+    extDateEl.classList.remove('err');
+    extMsg.textContent = '';
+  }
+});
+
+function openExtend(id) {
+  extendingId = id;
+  extMsg.textContent = '';
+  document.getElementById('extDays').value = 30;
+  extDateEl.value = '';
+  extDateEl.classList.remove('err');
+  extDateNative.value = '';
+  document.querySelector('input[name="extMode"][value="days"]').checked = true;
+  extOk.disabled = false;
+  extOk.textContent = '确定';
+  extendModal.classList.add('show');
+}
+
+function closeExtend() {
+  extendingId = null;
+  extendModal.classList.remove('show');
+}
+
+async function submitExtend() {
+  if (!extendingId) return;
+  var mode = document.querySelector('input[name="extMode"]:checked').value;
+  extMsg.textContent = '';
+
+  var form = new URLSearchParams();
+  form.append('device_id', extendingId);
+  form.append('mode', mode);
+
+  if (mode === 'days') {
+    var days = parseInt(document.getElementById('extDays').value, 10);
+    if (!days || days < 1 || days > 3650) {
+      extMsg.textContent = '请输入 1-3650 之间的天数';
+      return;
+    }
+    form.append('days', days);
+  } else if (mode === 'date') {
+    var date = parseDateInput(extDateEl.value);
+    if (!date) {
+      extDateEl.classList.add('err');
+      extMsg.textContent = '请输入有效日期，如 2026-11-30 或 20261130';
+      extDateEl.focus();
+      return;
+    }
+    extDateEl.value = date;
+    form.append('date', date);
+  }
+
+  extOk.disabled = true;
+  extOk.textContent = '处理中…';
+
+  try {
+    var res = await fetch('./api/admin/extend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+      credentials: 'same-origin'
+    });
+    if (res.status === 401) { closeExtend(); logout(); return; }
+    var data = await res.json();
+    if (data.success) {
+      closeExtend();
+      loadDevices();
+    } else {
+      extMsg.textContent = data.error || '延期失败';
+      extOk.disabled = false;
+      extOk.textContent = '确定';
+    }
+  } catch (e) {
+    extMsg.textContent = '网络错误';
+    extOk.disabled = false;
+    extOk.textContent = '确定';
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+(async function init() {
+  try {
+    var res = await fetch('./api/auth_check', { credentials: 'same-origin' });
+    var data = await res.json();
+    if (data.logged_in) showAdmin();
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>
