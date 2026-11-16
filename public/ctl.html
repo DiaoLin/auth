@@ -495,6 +495,15 @@
 </div>
 
 <script>
+function apiFetch(path, options = {}) {
+  const headers = options.headers || {};
+  const token = localStorage.getItem('admin_token');
+  if (token) headers.Authorization = 'Bearer ' + token;
+  options.headers = headers;
+  options.credentials = 'same-origin';
+  return fetch(path, options);
+}
+
 var loginBtn  = document.getElementById('loginBtn');
 var logoutBtn = document.getElementById('logoutBtn');
 var passwordEl= document.getElementById('password');
@@ -522,7 +531,10 @@ async function login() {
       credentials: 'same-origin'
     });
     var data = await res.json();
-    if (data.success) showAdmin();
+    if (data.success && data.token) {
+      localStorage.setItem('admin_token', data.token);
+      showAdmin();
+    }
     else msg.textContent = data.error || '登录失败';
   } catch (e) {
     msg.textContent = '网络错误';
@@ -531,11 +543,12 @@ async function login() {
 
 async function logout() {
   try {
-    await fetch('./api/admin/logout', {
+    await apiFetch('./api/admin/logout', {
       method: 'POST',
       credentials: 'same-origin'
     });
   } catch (e) {}
+  localStorage.removeItem('admin_token');
   stopReqAutoRefresh();
   document.getElementById('adminBox').style.display = 'none';
   document.getElementById('loginBox').style.display = 'block';
@@ -590,7 +603,7 @@ function stopReqAutoRefresh() {
 
 async function loadRequests() {
   try {
-    var res = await fetch('./api/admin/requests?status=' + encodeURIComponent(reqFilter), {
+    var res = await apiFetch('./api/admin/requests?status=' + encodeURIComponent(reqFilter), {
       credentials: 'same-origin',
       cache: 'no-store'
     });
@@ -682,7 +695,7 @@ async function startApprove(requestId) {
     form.append('action', 'preview');
     form.append('request_id', requestId);
 
-    var res = await fetch('./api/admin/requests', {
+    var res = await apiFetch('./api/admin/requests', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form.toString(),
@@ -815,7 +828,7 @@ async function submitApprove() {
   apOk.textContent = '处理中…';
 
   try {
-    var res = await fetch('./api/admin/requests', {
+    var res = await apiFetch('./api/admin/requests', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form.toString(),
@@ -884,7 +897,7 @@ async function doReject() {
   form.append('reason', rejectReasonEl.value.trim());
 
   try {
-    var res = await fetch('./api/admin/requests', {
+    var res = await apiFetch('./api/admin/requests', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form.toString(),
@@ -915,7 +928,7 @@ document.getElementById('refreshBtn').addEventListener('click', function () { lo
 
 async function loadDevices(showTip) {
   try {
-    var res = await fetch('./api/admin/devices', { credentials: 'same-origin', cache: 'no-store' });
+    var res = await apiFetch('./api/admin/devices', { credentials: 'same-origin', cache: 'no-store' });
     if (res.status === 401) { logout(); return; }
     var data = await res.json();
     allDevices = data.devices || [];
@@ -1089,7 +1102,7 @@ async function doRevoke() {
   form.append('reason', revokeReasonEl.value.trim());
 
   try {
-    var res = await fetch('./api/admin/revoke', {
+    var res = await apiFetch('./api/admin/revoke', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form.toString(),
@@ -1176,7 +1189,7 @@ async function doBan() {
   if (mode === 'temp') form.append('days', days);
 
   try {
-    var res = await fetch('./api/admin/ban', {
+    var res = await apiFetch('./api/admin/ban', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form.toString(),
@@ -1233,7 +1246,7 @@ async function doUnban() {
   form.append('device_id', unbanningId);
 
   try {
-    var res = await fetch('./api/admin/unban', {
+    var res = await apiFetch('./api/admin/unban', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form.toString(),
@@ -1382,7 +1395,7 @@ async function submitExtend() {
   extOk.textContent = '处理中…';
 
   try {
-    var res = await fetch('./api/admin/extend', {
+    var res = await apiFetch('./api/admin/extend', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form.toString(),
@@ -1412,10 +1425,14 @@ function escapeHtml(s) {
 }
 
 (async function init() {
+  var token = localStorage.getItem('admin_token');
+  if (!token) return;
+
   try {
-    var res = await fetch('./api/auth_check', { credentials: 'same-origin' });
+    var res = await apiFetch('./api/auth_check', { credentials: 'same-origin' });
     var data = await res.json();
     if (data.logged_in) showAdmin();
+    else localStorage.removeItem('admin_token');
   } catch (e) {}
 })();
 </script>
