@@ -4,8 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <!-- 严格的 CSP：禁止加载外部脚本，禁止向未知域名发送数据，从根源防范 XSS -->
-<<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-<script>eruda.init();</script>
+
 
 <title>设备管理</title>
 <style>
@@ -298,7 +297,8 @@
 </style>
 </head>
 <body>
-
+<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+<script>eruda.init();</script>
 <div class="wrap">
 
   <div id="loginBox" class="card">
