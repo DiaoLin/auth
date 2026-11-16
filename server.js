@@ -1,6 +1,6 @@
 /* ============================================================
  * 设备白名单系统 · 单文件后端
- * Express + PostgreSQL + SSE (纯 Token 鉴权版 + UA 强绑定)
+ * Express + PostgreSQL + SSE
  * ============================================================ */
 
 import express from 'express';
@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import cors from 'cors';
 
 /* ============================================================
- * 1. 配置
+ * 1. 配置（依赖环境变量，无硬编码敏感信息）
  * ============================================================ */
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
@@ -175,43 +175,30 @@ function serializeConflict(c) {
   };
 }
 
-/* ---------- Admin Token 鉴权 (基于 Header + UA 绑定) ---------- */
+/* ---------- Admin Token 鉴权 (基于 Header) ---------- */
 
-function generateAdminToken(req) {
+function generateAdminToken() {
   const exp = Math.floor(Date.now() / 1000) + ADMIN_SESSION_TTL;
-  const ua = req.headers['user-agent'] || 'unknown';
-  const uaHash = crypto.createHash('sha256').update(ua).digest('hex');
-  
-  const payload = `${exp}.${uaHash}`;
   const sig = crypto
     .createHmac('sha256', ADMIN_SIGNING_KEY)
-    .update(payload)
+    .update(String(exp))
     .digest('hex');
-  return `${payload}.${sig}`;
+  return `${exp}.${sig}`;
 }
 
-function verifyAdminToken(req, token) {
+function verifyAdminToken(token) {
   if (!token || typeof token !== 'string') return false;
   if (!ADMIN_SIGNING_KEY) return false;
   const parts = token.split('.');
-  if (parts.length !== 3) return false;
-  
-  const [exp, uaHash, sig] = parts;
+  if (parts.length !== 2) return false;
+  const [exp, sig] = parts;
   if (!/^\d+$/.test(exp)) return false;
   if (Number(exp) < Math.floor(Date.now() / 1000)) return false;
-
-  // 校验 UA 绑定
-  const ua = req.headers['user-agent'] || 'unknown';
-  const expectedUaHash = crypto.createHash('sha256').update(ua).digest('hex');
-  if (uaHash !== expectedUaHash) return false;
-
-  const payload = `${exp}.${uaHash}`;
-  const expectedSig = crypto
+  const expected = crypto
     .createHmac('sha256', ADMIN_SIGNING_KEY)
-    .update(payload)
+    .update(exp)
     .digest('hex');
-    
-  const a = Buffer.from(expectedSig);
+  const a = Buffer.from(expected);
   const b = Buffer.from(sig);
   if (a.length !== b.length) return false;
   return crypto.timingSafeEqual(a, b);
@@ -223,7 +210,7 @@ function requireAdmin(req, res, next) {
   if (authHeader.startsWith('Bearer ')) {
     token = authHeader.slice(7);
   }
-  if (!verifyAdminToken(req, token)) {
+  if (!verifyAdminToken(token)) {
     return res.status(401).json({ error: '未授权，请先登录' });
   }
   next();
@@ -281,10 +268,10 @@ const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
-// 纯 Token 鉴权，允许 Authorization 头
 app.use(cors({
   origin: FRONTEND_ORIGIN,
-  allowedHeaders: ['Content-Type', 'Authorization']
+  credentials: true, // 虽然不用 Cookie 了，保留以防万一
+  allowedHeaders: ['Content-Type', 'Authorization'] // 允许自定义 Header
 }));
 
 app.use(express.urlencoded({ extended: false, limit: '32kb' }));
@@ -493,7 +480,7 @@ app.post('/api/auth', async (req, res) => {
       await new Promise((r) => setTimeout(r, 500));
       return res.status(401).json({ error: '密码错误' });
     }
-    const token = generateAdminToken(req);
+    const token = generateAdminToken();
     return res.json({ success: true, token }); // 返回给前端存入 localStorage
   } catch (e) {
     return res.status(500).json({ error: '服务错误' });
@@ -506,11 +493,11 @@ app.get('/api/auth_check', (req, res) => {
   if (authHeader.startsWith('Bearer ')) {
     token = authHeader.slice(7);
   }
-  res.json({ logged_in: verifyAdminToken(req, token) });
+  res.json({ logged_in: verifyAdminToken(token) });
 });
 
 app.post('/api/admin/logout', (req, res) => {
-  res.json({ success: true }); // 前端清理 localStorage 即可
+  res.json({ success: true }); // 前端清理 localStorage 即可，服务端无需处理
 });
 
 /* ============================================================
@@ -760,6 +747,7 @@ app.use('/api/admin', adminRouter);
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not Found' }));
 
+// 全局 404 处理重定向到 check.html
 app.use((req, res, next) => {
   if (req.method === 'GET') return res.redirect('/check.html');
   res.status(404).send('Not Found');
