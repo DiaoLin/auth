@@ -3,9 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<!-- 严格的 CSP：禁止加载外部脚本，禁止向未知域名发送数据，从根源防范 XSS -->
-
-
 <title>设备管理</title>
 <style>
   :root{
@@ -201,7 +198,7 @@
 
   .modal-mask{
     position:fixed;inset:0;display:none;align-items:center;justify-content:center;
-    background:rgba(3,6,12,.72);backdrop-filter:blur(3px);z-index:80;
+    background:rgba(3,6,12,.72);backdrop-filter:blur(3px);z-index:99;
   }
   .modal-mask.show{display:flex;}
   .modal-box{
@@ -297,16 +294,6 @@
 </style>
 </head>
 <body>
-<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-<script>
-eruda.init({
-  container: document.body,
-  tool: ['console','elements','network','resources']
-});
-// 强制提升eruda容器z-index到9999，压过所有弹窗遮罩
-const el = document.querySelector('.eruda-container');
-if(el) el.style.zIndex = '9999';
-</script>
 
 <div class="wrap">
 
@@ -518,6 +505,7 @@ async function apiFetch(path, options = {}) {
     headers['Authorization'] = 'Bearer ' + token;
   }
   options.headers = headers;
+  options.credentials = 'include';
 
   const res = await fetch(API_BASE + path, options);
   if (res.status === 401) {
@@ -554,7 +542,8 @@ async function login() {
     var res = await fetch(API_BASE + '/api/auth', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString()
+      body: form.toString(),
+      credentials: 'include'
     });
     var data = await res.json();
     if (data.success && data.token) {
@@ -1437,7 +1426,8 @@ function escapeHtml(s) {
 
   try {
     var res = await fetch(API_BASE + '/api/auth_check', {
-      headers: { 'Authorization': 'Bearer ' + token }
+      headers: { 'Authorization': 'Bearer ' + token },
+      credentials: 'include'
     });
     var data = await res.json();
     if (data.logged_in) showAdmin();
