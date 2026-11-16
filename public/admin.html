@@ -495,22 +495,14 @@
 </div>
 
 <script>
-const API_BASE = 'https://devauth.us.ci'; // 如果你的后端和前端同域，可以改为 './api'
+const API_BASE = '';
 
 // 统一的请求封装
 async function apiFetch(path, options = {}) {
-  const token = localStorage.getItem('admin_token');
-  const headers = options.headers || {};
-  if (token) {
-    headers['Authorization'] = 'Bearer ' + token;
-  }
-  options.headers = headers;
   options.credentials = 'include';
 
   const res = await fetch(API_BASE + path, options);
   if (res.status === 401) {
-    // 如果 401 未授权，清理本地 token 并回到登录页
-    localStorage.removeItem('admin_token');
     document.getElementById('adminBox').style.display = 'none';
     document.getElementById('loginBox').style.display = 'block';
     document.getElementById('loginMsg').textContent = '登录已过期，请重新登录';
@@ -546,8 +538,7 @@ async function login() {
       credentials: 'include'
     });
     var data = await res.json();
-    if (data.success && data.token) {
-      localStorage.setItem('admin_token', data.token); // 存入 localStorage
+    if (data.success) {
       showAdmin();
     } else {
       msg.textContent = data.error || '登录失败';
@@ -561,7 +552,6 @@ async function logout() {
   try {
     await apiFetch('/api/admin/logout', { method: 'POST' });
   } catch (e) {}
-  localStorage.removeItem('admin_token');
   stopReqAutoRefresh();
   document.getElementById('adminBox').style.display = 'none';
   document.getElementById('loginBox').style.display = 'block';
@@ -1421,17 +1411,12 @@ function escapeHtml(s) {
 }
 
 (async function init() {
-  var token = localStorage.getItem('admin_token');
-  if (!token) return; // 无 token，停留在登录页
-
   try {
     var res = await fetch(API_BASE + '/api/auth_check', {
-      headers: { 'Authorization': 'Bearer ' + token },
       credentials: 'include'
     });
     var data = await res.json();
     if (data.logged_in) showAdmin();
-    else localStorage.removeItem('admin_token');
   } catch (e) {}
 })();
 </script>
