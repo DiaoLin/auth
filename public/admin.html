@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- 严格的 CSP：禁止加载外部脚本，禁止向未知域名发送数据，从根源防范 XSS -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://devauth.us.ci https://api.devauth.us.ci; img-src 'self' data:; object-src 'none';">
 <title>设备管理</title>
 <style>
   :root{
@@ -495,6 +497,29 @@
 </div>
 
 <script>
+const API_BASE = 'https://devauth.us.ci'; // 如果你的后端和前端同域，可以改为 './api'
+
+// 统一的请求封装
+async function apiFetch(path, options = {}) {
+  const token = localStorage.getItem('admin_token');
+  const headers = options.headers || {};
+  if (token) {
+    headers['Authorization'] = 'Bearer ' + token;
+  }
+  options.headers = headers;
+
+  const res = await fetch(API_BASE + path, options);
+  if (res.status === 401) {
+    // 如果 401 未授权，清理本地 token 并回到登录页
+    localStorage.removeItem('admin_token');
+    document.getElementById('adminBox').style.display = 'none';
+    document.getElementById('loginBox').style.display = 'block';
+    document.getElementById('loginMsg').textContent = '登录已过期，请重新登录';
+    throw new Error('未授权');
+  }
+  return res;
+}
+
 var loginBtn  = document.getElementById('loginBtn');
 var logoutBtn = document.getElementById('logoutBtn');
 var passwordEl= document.getElementById('password');
@@ -515,15 +540,18 @@ async function login() {
   form.append('password', pwd);
 
   try {
-    var res = await fetch('./api/auth', {
+    var res = await fetch(API_BASE + '/api/auth', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString(),
-      credentials: 'same-origin'
+      body: form.toString()
     });
     var data = await res.json();
-    if (data.success) showAdmin();
-    else msg.textContent = data.error || '登录失败';
+    if (data.success && data.token) {
+      localStorage.setItem('admin_token', data.token); // 存入 localStorage
+      showAdmin();
+    } else {
+      msg.textContent = data.error || '登录失败';
+    }
   } catch (e) {
     msg.textContent = '网络错误';
   }
@@ -531,11 +559,9 @@ async function login() {
 
 async function logout() {
   try {
-    await fetch('./api/admin/logout', {
-      method: 'POST',
-      credentials: 'same-origin'
-    });
+    await apiFetch('/api/admin/logout', { method: 'POST' });
   } catch (e) {}
+  localStorage.removeItem('admin_token');
   stopReqAutoRefresh();
   document.getElementById('adminBox').style.display = 'none';
   document.getElementById('loginBox').style.display = 'block';
@@ -590,11 +616,9 @@ function stopReqAutoRefresh() {
 
 async function loadRequests() {
   try {
-    var res = await fetch('./api/admin/requests?status=' + encodeURIComponent(reqFilter), {
-      credentials: 'same-origin',
+    var res = await apiFetch('/api/admin/requests?status=' + encodeURIComponent(reqFilter), {
       cache: 'no-store'
     });
-    if (res.status === 401) { logout(); return; }
     var data = await res.json();
     allRequests = data.requests || [];
     renderRequests();
@@ -682,13 +706,11 @@ async function startApprove(requestId) {
     form.append('action', 'preview');
     form.append('request_id', requestId);
 
-    var res = await fetch('./api/admin/requests', {
+    var res = await apiFetch('/api/admin/requests', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString(),
-      credentials: 'same-origin'
+      body: form.toString()
     });
-    if (res.status === 401) { logout(); return; }
     var data = await res.json();
 
     if (data.blocked === true) {
@@ -815,13 +837,11 @@ async function submitApprove() {
   apOk.textContent = '处理中…';
 
   try {
-    var res = await fetch('./api/admin/requests', {
+    var res = await apiFetch('/api/admin/requests', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString(),
-      credentials: 'same-origin'
+      body: form.toString()
     });
-    if (res.status === 401) { closeApprove(); logout(); return; }
     var data = await res.json();
 
     if (data.success) {
@@ -884,13 +904,11 @@ async function doReject() {
   form.append('reason', rejectReasonEl.value.trim());
 
   try {
-    var res = await fetch('./api/admin/requests', {
+    var res = await apiFetch('/api/admin/requests', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString(),
-      credentials: 'same-origin'
+      body: form.toString()
     });
-    if (res.status === 401) { closeReject(); logout(); return; }
     var data = await res.json();
     if (data.success) {
       closeReject();
@@ -915,8 +933,7 @@ document.getElementById('refreshBtn').addEventListener('click', function () { lo
 
 async function loadDevices(showTip) {
   try {
-    var res = await fetch('./api/admin/devices', { credentials: 'same-origin', cache: 'no-store' });
-    if (res.status === 401) { logout(); return; }
+    var res = await apiFetch('/api/admin/devices', { cache: 'no-store' });
     var data = await res.json();
     allDevices = data.devices || [];
     renderDevices();
@@ -1089,13 +1106,11 @@ async function doRevoke() {
   form.append('reason', revokeReasonEl.value.trim());
 
   try {
-    var res = await fetch('./api/admin/revoke', {
+    var res = await apiFetch('/api/admin/revoke', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString(),
-      credentials: 'same-origin'
+      body: form.toString()
     });
-    if (res.status === 401) { closeRevoke(); logout(); return; }
     var data = await res.json();
     if (data.success) {
       closeRevoke();
@@ -1176,13 +1191,11 @@ async function doBan() {
   if (mode === 'temp') form.append('days', days);
 
   try {
-    var res = await fetch('./api/admin/ban', {
+    var res = await apiFetch('/api/admin/ban', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString(),
-      credentials: 'same-origin'
+      body: form.toString()
     });
-    if (res.status === 401) { closeBan(); logout(); return; }
     var data = await res.json();
     if (data.success) {
       closeBan();
@@ -1233,13 +1246,11 @@ async function doUnban() {
   form.append('device_id', unbanningId);
 
   try {
-    var res = await fetch('./api/admin/unban', {
+    var res = await apiFetch('/api/admin/unban', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString(),
-      credentials: 'same-origin'
+      body: form.toString()
     });
-    if (res.status === 401) { closeUnban(); logout(); return; }
     var data = await res.json();
     if (data.success) {
       closeUnban();
@@ -1382,13 +1393,11 @@ async function submitExtend() {
   extOk.textContent = '处理中…';
 
   try {
-    var res = await fetch('./api/admin/extend', {
+    var res = await apiFetch('/api/admin/extend', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString(),
-      credentials: 'same-origin'
+      body: form.toString()
     });
-    if (res.status === 401) { closeExtend(); logout(); return; }
     var data = await res.json();
     if (data.success) {
       closeExtend();
@@ -1412,10 +1421,16 @@ function escapeHtml(s) {
 }
 
 (async function init() {
+  var token = localStorage.getItem('admin_token');
+  if (!token) return; // 无 token，停留在登录页
+
   try {
-    var res = await fetch('./api/auth_check', { credentials: 'same-origin' });
+    var res = await fetch(API_BASE + '/api/auth_check', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
     var data = await res.json();
     if (data.logged_in) showAdmin();
+    else localStorage.removeItem('admin_token');
   } catch (e) {}
 })();
 </script>
