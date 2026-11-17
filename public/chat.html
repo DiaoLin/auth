@@ -137,7 +137,7 @@
 
 <div class="sidebar">
   <div class="sidebar-head">
-    <h2>聊天室 v1.1.0</h2>
+    <h2>聊天室 v1.2.0</h2>
     <div class="alias-box">
       <button id="saveAliasBtn" type="button">修改昵称</button>
     </div>
@@ -235,7 +235,7 @@
     document.body.appendChild(mask);
   }
 
-  function showDialog({ title, message = '', placeholder = '', initialValue = '', maxLength = null, confirm = false }) {
+  function showDialog({ title, message = '', placeholder = '', initialValue = '', confirm = false }) {
     return new Promise(resolve => {
       inputModalTitle.textContent = title;
       inputModalMessage.textContent = message;
@@ -243,8 +243,6 @@
       inputModalField.hidden = confirm;
       inputModalField.value = initialValue;
       inputModalField.placeholder = placeholder;
-      if (maxLength === null) inputModalField.removeAttribute('maxlength');
-      else inputModalField.maxLength = maxLength;
       inputModalCancel.hidden = false;
       inputModalSubmit.textContent = confirm ? '确定' : '保存';
       inputModal.hidden = false;
@@ -278,8 +276,8 @@
     });
   }
 
-  function showInputModal(title, placeholder, initialValue = '', message = '', maxLength = null) {
-    return showDialog({ title, placeholder, initialValue, message, maxLength });
+  function showInputModal(title, placeholder, initialValue = '', message = '') {
+    return showDialog({ title, placeholder, initialValue, message });
   }
 
   function showConfirmModal(title, message) {
@@ -346,8 +344,7 @@
           '修改昵称',
           '请输入你的昵称',
           alias,
-          '请输入你的昵称，昵称对所有用户可见。',
-          20
+          '请输入你的昵称，昵称对所有用户可见。'
         );
         if (nickname !== null) await saveAlias(nickname);
       }
@@ -374,8 +371,7 @@
       '修改昵称',
       '请输入你的昵称',
       currentAlias,
-      '请输入你的昵称，昵称对所有用户可见。',
-      20
+      '请输入你的昵称，昵称对所有用户可见。'
     );
     if (nickname !== null) await saveAlias(nickname);
   });
