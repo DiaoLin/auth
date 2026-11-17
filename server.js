@@ -1,15 +1,17 @@
 /* ============================================================
- * 设备白名单系统 · 单文件后端
+ * 设备白名单系统 · 单文件后端 (主服务)
  * Express + PostgreSQL + SSE
  * ============================================================ */
 
 import express from 'express';
+import http from 'node:http'; // 新增引入
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cors from 'cors';
+import chatRouter, { initWebSocket } from './chat-server.js'; // 引入聊天模块
 
 /* ============================================================
  * 1. 配置（依赖环境变量，无硬编码敏感信息）
@@ -82,7 +84,7 @@ pool.on('error', (err) => {
   console.error('[pg] idle client error', err);
 });
 
-function query(text, params) {
+export function query(text, params) {
   return pool.query(text, params);
 }
 
@@ -127,6 +129,38 @@ async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_requests_status   ON access_requests(status);
     CREATE INDEX IF NOT EXISTS idx_requests_dev_name ON access_requests(device_name);
+
+    /* ---- 聊天室系统表 ---- */
+    CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+    CREATE TABLE IF NOT EXISTS chat_rooms (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        type VARCHAR(20) NOT NULL CHECK (type IN ('private', 'group')),
+        name VARCHAR(100),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_members (
+        room_id UUID REFERENCES chat_rooms(id) ON DELETE CASCADE,
+        device_name VARCHAR(100) NOT NULL,
+        joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (room_id, device_name)
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_messages (
+        id SERIAL PRIMARY KEY,
+        room_id UUID REFERENCES chat_rooms(id) ON DELETE CASCADE,
+        sender_name VARCHAR(100) NOT NULL,
+        sender_alias VARCHAR(100),
+        content TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_chat_messages_room ON chat_messages(room_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS device_profiles (
+        device_name VARCHAR(100) PRIMARY KEY,
+        alias VARCHAR(100)
+    );
   `);
 }
 
@@ -270,8 +304,8 @@ app.set('trust proxy', 1);
 
 app.use(cors({
   origin: FRONTEND_ORIGIN,
-  credentials: true, // 虽然不用 Cookie 了，保留以防万一
-  allowedHeaders: ['Content-Type', 'Authorization'] // 允许自定义 Header
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 app.use(express.urlencoded({ extended: false, limit: '32kb' }));
@@ -745,6 +779,9 @@ adminRouter.post('/unban', async (req, res) => {
 
 app.use('/api/admin', adminRouter);
 
+// 将聊天路由挂载到 /api/chat
+app.use('/api/chat', chatRouter);
+
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not Found' }));
 
 // 全局 404 处理重定向到 check.html
@@ -759,9 +796,21 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: '服务器错误' });
 });
 
+/* ============================================================
+ * 启动逻辑修改：使用 HTTP Server 并初始化 WebSocket
+ * ============================================================ */
+
 async function main() {
   await initDb();
-  app.listen(PORT, '0.0.0.0', () => {
+  
+  // 1. 创建 HTTP Server
+  const server = http.createServer(app);
+  
+  // 2. 将 query 函数传入 WebSocket 初始化逻辑中
+  initWebSocket(server, query);
+
+  // 3. 监听端口
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
   });
 }
