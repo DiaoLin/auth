@@ -616,7 +616,9 @@
 
             function normalizeResourcePath(e) {
                 const t = e.replace(/\\/g, "/").replace(/^\/+/, "").split("/").filter(Boolean);
-                return 0 === t.length ? "" : "main.pak" === t[0] || "properties" === t[0] ? t.join("/") : t.length > 1 ? t.slice(1).join("/") : t[0]
+                if (0 === t.length) return "";
+                const n = t.findIndex((e, n) => n <= 2 && ("main.pak" === e || "properties" === e));
+                return n >= 0 ? t.slice(n).join("/") : t.length > 1 ? t.slice(1).join("/") : t[0]
             }
 
             function normalizeSaveImportPath(e) {
