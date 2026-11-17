@@ -137,15 +137,19 @@ async function initDb() {
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         type VARCHAR(20) NOT NULL CHECK (type IN ('private', 'group')),
         name VARCHAR(100),
+        owner_device_name VARCHAR(100),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    ALTER TABLE chat_rooms ADD COLUMN IF NOT EXISTS owner_device_name VARCHAR(100);
 
     CREATE TABLE IF NOT EXISTS chat_members (
         room_id UUID REFERENCES chat_rooms(id) ON DELETE CASCADE,
         device_name VARCHAR(100) NOT NULL,
         joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (room_id, device_name)
     );
+    ALTER TABLE chat_members ADD COLUMN IF NOT EXISTS last_read_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
     CREATE TABLE IF NOT EXISTS chat_messages (
         id SERIAL PRIMARY KEY,
@@ -161,6 +165,12 @@ async function initDb() {
         device_name VARCHAR(100) PRIMARY KEY,
         alias VARCHAR(100)
     );
+    UPDATE chat_rooms r
+    SET owner_device_name = (
+      SELECT m.device_name FROM chat_members m
+      WHERE m.room_id = r.id ORDER BY m.joined_at, m.device_name LIMIT 1
+    )
+    WHERE r.type = 'group' AND r.owner_device_name IS NULL;
   `);
 }
 
