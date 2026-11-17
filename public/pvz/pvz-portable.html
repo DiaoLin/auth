@@ -827,14 +827,9 @@
                     logUrlImportStep("下载完成，共 " + formatDownloadSize(received));
                     t.textContent = "⏳ Importing ZIP…";
                     logUrlImportStep("开始解析 ZIP 文件");
-                    let zip;
-                    try {
-                        zip = await JSZip.loadAsync(new Blob(chunks, {
-                            type: "application/zip"
-                        }))
-                    } catch (e) {
-                        throw new Error("下载的内容不是有效的 ZIP 压缩包。请确认地址指向包含 main.pak 与 properties/ 的 ZIP 文件。")
-                    }
+                    const zip = await JSZip.loadAsync(new Blob(chunks, {
+                        type: "application/zip"
+                    }));
                     const entries = Object.keys(zip.files).filter(e => !zip.files[e].dir);
                     logUrlImportStep("ZIP 解析成功，包含 " + entries.length + " 个文件");
                     const c = await addZipEntriesToResources(zip);
