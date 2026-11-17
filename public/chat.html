@@ -18,8 +18,8 @@
   .sidebar-head { padding: 16px; border-bottom: 1px solid var(--border); }
   .sidebar-head h2 { margin: 0 0 10px; font-size: 18px; }
   .alias-box { display: flex; gap: 8px; margin-bottom: 10px; }
-  .alias-box input { flex:1; min-width: 0; background: rgba(0,0,0,.3); border: 1px solid var(--border); color: #fff; padding: 6px 10px; border-radius: 6px; outline: none; font-size: 13px; }
-  .alias-box button { flex-shrink: 0; white-space: nowrap; background: var(--accent); color: #000; border: none; border-radius: 6px; padding: 0 12px; font-weight: bold; cursor: pointer; }
+  .alias-box button { width: 100%; background: rgba(255,255,255,.1); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-weight: 600; cursor: pointer; }
+  .alias-box button:hover { background: rgba(255,255,255,.15); }
   .btn-new { width: 100%; padding: 10px; background: rgba(255,255,255,.1); color: #fff; border: none; border-radius: 8px; cursor: pointer; margin-top: 8px; transition: background .2s; }
   .btn-new:hover { background: rgba(255,255,255,.15); }
 
@@ -27,11 +27,29 @@
   .input-modal[hidden] { display: none; }
   .input-modal-box { width: 100%; max-width: 360px; padding: 24px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); box-shadow: 0 10px 40px rgba(0,0,0,.5); }
   .input-modal-box h3 { margin: 0 0 16px; font-size: 17px; }
+  .input-modal-message { margin: -6px 0 16px; color: var(--text2); font-size: 14px; line-height: 1.6; }
+  .input-modal-message[hidden], .input-modal-box input[hidden] { display: none; }
   .input-modal-box input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; outline: none; background: rgba(0,0,0,.3); color: var(--text); font-size: 14px; }
   .input-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
   .input-modal-actions button { padding: 9px 16px; border: 0; border-radius: 8px; cursor: pointer; font-weight: 600; }
   .input-modal-cancel { background: rgba(255,255,255,.1); color: var(--text); }
   .input-modal-submit { background: var(--accent); color: #06121a; }
+  .group-modal { position: fixed; inset: 0; z-index: 9998; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,.72); }
+  .group-modal[hidden] { display: none; }
+  .group-modal-box { width: 100%; max-width: 620px; max-height: 90vh; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+  .group-modal-head { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid var(--border); }
+  .group-modal-head h3 { margin: 0; font-size: 18px; }
+  .group-modal-close { border: 0; background: transparent; color: var(--text2); font-size: 24px; line-height: 1; cursor: pointer; }
+  .group-members { overflow-y: auto; min-height: 100px; padding: 12px 24px; }
+  .group-member { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .group-member:last-child { border-bottom: 0; }
+  .group-member-name { min-width: 0; overflow-wrap: anywhere; }
+  .group-member-role { margin-left: 8px; color: var(--accent); font-size: 12px; }
+  .group-member-kick, .group-action { padding: 8px 12px; border: 1px solid var(--border); border-radius: 7px; background: rgba(255,255,255,.08); color: var(--text); cursor: pointer; }
+  .group-member-kick { flex-shrink: 0; color: var(--danger); }
+  .group-member-kick:hover, .group-action:hover { background: rgba(255,255,255,.14); }
+  .group-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px 24px 20px; border-top: 1px solid var(--border); }
+  .group-action.danger { color: var(--danger); }
 
   .room-list { flex: 1; overflow-y: auto; padding: 10px; }
   .room-item { padding: 12px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; transition: background .2s; }
@@ -42,19 +60,12 @@
   .unread-badge { flex-shrink: 0; min-width: 18px; padding: 2px 6px; border-radius: 10px; background: var(--danger); color: #fff; font-size: 11px; line-height: 16px; text-align: center; font-weight: 700; }
 
   /* 聊天主区 */
-  .main { flex: 1; display: flex; flex-direction: column; background: var(--bg); }
+  .main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
   .chat-header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--panel); }
   .chat-header h3 { margin: 0; font-size: 18px; }
   .chat-header-actions { display: flex; align-items: center; gap: 14px; }
-  .group-menu-wrap { position: relative; }
   .group-menu-button { border: 0; padding: 4px 10px; color: var(--text); background: transparent; font-size: 24px; line-height: 1; cursor: pointer; }
-  .group-menu { position: absolute; z-index: 20; top: 36px; right: 0; width: 150px; padding: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); box-shadow: 0 8px 24px rgba(0,0,0,.4); }
-  .group-menu[hidden] { display: none; }
-  .group-menu button[hidden] { display: none; }
-  .group-menu button { display: block; width: 100%; padding: 9px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
-  .group-menu button:hover { background: rgba(255,255,255,.1); }
-  .group-menu button.danger { color: var(--danger); }
-  .chat-messages { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+  .chat-messages { flex: 1; min-height: 0; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
 
   .msg { display: flex; flex-direction: column; max-width: 70%; }
   .msg.self { align-self: flex-end; align-items: flex-end; }
@@ -104,6 +115,7 @@
 <div id="inputModal" class="input-modal" role="dialog" aria-modal="true" aria-labelledby="inputModalTitle" hidden>
   <form id="inputModalForm" class="input-modal-box">
     <h3 id="inputModalTitle"></h3>
+    <p id="inputModalMessage" class="input-modal-message" hidden></p>
     <input id="inputModalField" type="text" autocomplete="off">
     <div class="input-modal-actions">
       <button class="input-modal-cancel" id="inputModalCancel" type="button">取消</button>
@@ -112,12 +124,22 @@
   </form>
 </div>
 
+<div id="groupModal" class="group-modal" role="dialog" aria-modal="true" aria-labelledby="groupModalTitle" hidden>
+  <div class="group-modal-box">
+    <div class="group-modal-head">
+      <h3 id="groupModalTitle">群组管理</h3>
+      <button class="group-modal-close" id="groupModalClose" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="group-members" id="groupMembers"></div>
+    <div class="group-actions" id="groupActions"></div>
+  </div>
+</div>
+
 <div class="sidebar">
   <div class="sidebar-head">
     <h2>聊天室 v1.1.0</h2>
     <div class="alias-box">
-      <input type="text" id="aliasInput" placeholder="设置显示别名" maxlength="20">
-      <button id="saveAliasBtn">保存</button>
+      <button id="saveAliasBtn" type="button">修改昵称</button>
     </div>
     <button class="btn-new" id="btnNewGroup">+ 新建群组</button>
     <button class="btn-new" id="btnNewPrivate">+ 发起私聊</button>
@@ -126,22 +148,13 @@
 </div>
 
 <div class="main">
-  <div id="chatView" style="display:none; flex:1; flex-direction:column;">
+  <div id="chatView" style="display:none; flex:1; min-height:0; flex-direction:column;">
     <div class="chat-header">
       <h3 id="chatTitle"></h3>
       <div class="chat-header-actions">
         <span id="chatStatus" style="font-size:12px;color:var(--text2);">未连接</span>
         <div class="group-menu-wrap" id="groupMenuWrap" hidden>
           <button class="group-menu-button" id="groupMenuButton" type="button" aria-label="群聊管理" aria-expanded="false">⋮</button>
-          <div class="group-menu" id="groupMenu" hidden>
-            <button type="button" data-action="members">查看成员</button>
-            <button type="button" data-action="invite" data-owner-only>邀请成员</button>
-            <button type="button" data-action="kick" data-owner-only>移除成员</button>
-            <button type="button" data-action="rename" data-owner-only>修改群名</button>
-            <button type="button" data-action="transfer" data-owner-only>转让群主</button>
-            <button type="button" data-action="leave">退出群聊</button>
-            <button type="button" class="danger" data-action="dissolve" data-owner-only>解散群聊</button>
-          </div>
         </div>
       </div>
     </div>
@@ -177,6 +190,7 @@
   let currentRoom = null;
   let rooms = [];
   let errorTimeout = null;
+  let currentAlias = '';
 
   const roomListEl = document.getElementById('roomList');
   const chatView = document.getElementById('chatView');
@@ -185,15 +199,21 @@
   const chatMessages = document.getElementById('chatMessages');
   const msgInput = document.getElementById('msgInput');
   const sendBtn = document.getElementById('sendBtn');
-  const aliasInput = document.getElementById('aliasInput');
   const errorToast = document.getElementById('errorToast');
   const inputModal = document.getElementById('inputModal');
   const inputModalForm = document.getElementById('inputModalForm');
   const inputModalTitle = document.getElementById('inputModalTitle');
+  const inputModalMessage = document.getElementById('inputModalMessage');
   const inputModalField = document.getElementById('inputModalField');
+  const inputModalCancel = document.getElementById('inputModalCancel');
+  const inputModalSubmit = inputModalForm.querySelector('[type="submit"]');
   const groupMenuWrap = document.getElementById('groupMenuWrap');
   const groupMenuButton = document.getElementById('groupMenuButton');
-  const groupMenu = document.getElementById('groupMenu');
+  const groupModal = document.getElementById('groupModal');
+  const groupModalTitle = document.getElementById('groupModalTitle');
+  const groupMembers = document.getElementById('groupMembers');
+  const groupActions = document.getElementById('groupActions');
+  const groupModalClose = document.getElementById('groupModalClose');
 
   // 无有效令牌遮罩弹窗：点击「知道了」后再执行跳转
   function showInvalidTokenModal(message) {
@@ -215,13 +235,21 @@
     document.body.appendChild(mask);
   }
 
-  function showInputModal(title, placeholder) {
+  function showDialog({ title, message = '', placeholder = '', initialValue = '', maxLength = null, confirm = false }) {
     return new Promise(resolve => {
       inputModalTitle.textContent = title;
-      inputModalField.value = '';
+      inputModalMessage.textContent = message;
+      inputModalMessage.hidden = !message;
+      inputModalField.hidden = confirm;
+      inputModalField.value = initialValue;
       inputModalField.placeholder = placeholder;
+      if (maxLength === null) inputModalField.removeAttribute('maxlength');
+      else inputModalField.maxLength = maxLength;
+      inputModalCancel.hidden = false;
+      inputModalSubmit.textContent = confirm ? '确定' : '保存';
       inputModal.hidden = false;
-      inputModalField.focus();
+      if (confirm) inputModalSubmit.focus();
+      else inputModalField.focus();
 
       const finish = value => {
         inputModal.hidden = true;
@@ -233,7 +261,7 @@
       };
       const onSubmit = event => {
         event.preventDefault();
-        finish(inputModalField.value);
+        finish(confirm ? true : inputModalField.value);
       };
       const onCancel = () => finish(null);
       const onBackdropClick = event => {
@@ -244,10 +272,18 @@
       };
 
       inputModalForm.addEventListener('submit', onSubmit);
-      document.getElementById('inputModalCancel').addEventListener('click', onCancel);
+      inputModalCancel.addEventListener('click', onCancel);
       inputModal.addEventListener('click', onBackdropClick);
       document.addEventListener('keydown', onKeyDown);
     });
+  }
+
+  function showInputModal(title, placeholder, initialValue = '', message = '', maxLength = null) {
+    return showDialog({ title, placeholder, initialValue, message, maxLength });
+  }
+
+  function showConfirmModal(title, message) {
+    return showDialog({ title, message, confirm: true });
   }
 
   // 展示错误提示
@@ -303,24 +339,45 @@
     try {
       const res = await apiFetch('/api/chat/alias');
       const data = await res.json();
-      aliasInput.value = data.alias || '';
+      const alias = data.alias || '';
+      currentAlias = alias;
+      if (!localStorage.getItem('chat_nickname_prompted')) {
+        const nickname = await showInputModal(
+          '修改昵称',
+          '请输入你的昵称',
+          alias,
+          '请输入你的昵称，昵称对所有用户可见。',
+          20
+        );
+        if (nickname !== null) await saveAlias(nickname);
+      }
     } catch (e) {}
   }
 
-  document.getElementById('saveAliasBtn').addEventListener('click', async () => {
-    const alias = aliasInput.value.trim();
-    if (!alias) return showError('别名不能为空');
+  async function saveAlias(value) {
+    const alias = value.trim();
+    if (!alias) return showError('昵称不能为空');
     try {
       await apiFetch('/api/chat/alias', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'alias=' + encodeURIComponent(alias)
       });
-      // 成功后的轻提示
-      errorToast.style.background = 'rgba(79, 209, 197, 0.95)';
-      showError('别名已更新');
-      setTimeout(() => { errorToast.style.background = 'rgba(255, 107, 107, 0.95)'; }, 3000);
+      currentAlias = alias;
+      localStorage.setItem('chat_nickname_prompted', 'true');
+      showSuccess('昵称已更新');
     } catch (e) {}
+  }
+
+  document.getElementById('saveAliasBtn').addEventListener('click', async () => {
+    const nickname = await showInputModal(
+      '修改昵称',
+      '请输入你的昵称',
+      currentAlias,
+      '请输入你的昵称，昵称对所有用户可见。',
+      20
+    );
+    if (nickname !== null) await saveAlias(nickname);
   });
 
   // 2. 加载聊天室列表
@@ -392,7 +449,7 @@
   async function selectRoom(room) {
     currentRoomId = room.id;
     currentRoom = room;
-    groupMenu.hidden = true;
+    groupModal.hidden = true;
     groupMenuButton.setAttribute('aria-expanded', 'false');
     renderRooms();
 
@@ -402,7 +459,6 @@
       ? room.name
       : [room.other_alias && room.other_alias !== room.other_device_name ? room.other_alias : '', room.other_device_name].filter(Boolean).join(' · ') || '私聊';
     groupMenuWrap.hidden = room.type !== 'group';
-    updateGroupMenuPermissions();
     chatMessages.innerHTML = '<div style="text-align:center;color:#666;font-size:12px;">加载历史消息...</div>';
 
     try {
@@ -423,98 +479,165 @@
     }
   }
 
-  function updateGroupMenuPermissions() {
-    const isOwner = currentRoom && currentRoom.owner_device_name === getMyDeviceName();
-    groupMenu.querySelectorAll('[data-owner-only]').forEach(button => {
-      button.hidden = !isOwner;
-    });
-  }
-
   function closeCurrentRoom() {
     currentRoomId = null;
     currentRoom = null;
     chatView.style.display = 'none';
     emptyState.style.display = 'flex';
     groupMenuWrap.hidden = true;
+    groupModal.hidden = true;
     renderRooms();
   }
 
-  groupMenuButton.addEventListener('click', () => {
-    groupMenu.hidden = !groupMenu.hidden;
-    groupMenuButton.setAttribute('aria-expanded', String(!groupMenu.hidden));
-  });
-  document.addEventListener('click', event => {
-    if (!groupMenuWrap.contains(event.target)) {
-      groupMenu.hidden = true;
-      groupMenuButton.setAttribute('aria-expanded', 'false');
-    }
-  });
-  groupMenu.querySelectorAll('button').forEach(button => {
-    button.addEventListener('click', async () => {
-      const action = button.dataset.action;
-      const room = currentRoom;
-      if (!room) return;
-      groupMenu.hidden = true;
-      groupMenuButton.setAttribute('aria-expanded', 'false');
-      const base = `/api/chat/rooms/${room.id}`;
-      const postForm = (path, values) => apiFetch(path, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams(values).toString()
-      });
+  function addGroupAction(label, action, danger = false) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'group-action' + (danger ? ' danger' : '');
+    button.dataset.action = action;
+    button.textContent = label;
+    groupActions.appendChild(button);
+  }
 
-      try {
-        if (action === 'members') {
-          const res = await apiFetch(`${base}/members`);
-          const data = await res.json();
-          alert('群主：' + data.owner_device_name + '\n\n' + data.members.map(member =>
-            `${member.device_name}${member.alias && member.alias !== member.device_name ? `（${member.alias}）` : ''}`
-          ).join('\n'));
-        } else if (action === 'invite') {
-          const deviceName = await showInputModal('邀请成员', '请输入对方的设备名');
-          if (!deviceName || !deviceName.trim()) return;
-          await postForm(`${base}/members`, { device_name: deviceName.trim() });
-          showSuccess('已邀请成员');
-          await loadRooms();
-        } else if (action === 'kick') {
-          const deviceName = await showInputModal('移除成员', '请输入要移除成员的设备名');
-          if (!deviceName || !deviceName.trim()) return;
-          if (!confirm(`确定移除成员“${deviceName.trim()}”吗？`)) return;
-          await apiFetch(`${base}/members/${encodeURIComponent(deviceName.trim())}`, { method: 'DELETE' });
-          showSuccess('已移除成员');
-        } else if (action === 'rename') {
-          const name = await showInputModal('修改群名', '请输入新的群组名称');
-          if (!name || !name.trim()) return;
-          await apiFetch(base, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ name: name.trim() }).toString()
-          });
-          room.name = name.trim();
-          chatTitle.textContent = room.name;
-          renderRooms();
-          showSuccess('群名已更新');
-        } else if (action === 'transfer') {
-          const deviceName = await showInputModal('转让群主', '请输入新群主（必须是群成员）设备名');
-          if (!deviceName || !deviceName.trim()) return;
-          if (!confirm(`确定将群主转让给“${deviceName.trim()}”吗？`)) return;
-          await postForm(`${base}/transfer`, { device_name: deviceName.trim() });
-          room.owner_device_name = deviceName.trim();
-          updateGroupMenuPermissions();
-          showSuccess('群主已转让');
-        } else if (action === 'leave') {
-          if (!confirm('确定退出这个群聊吗？')) return;
-          await postForm(`${base}/leave`, {});
-          closeCurrentRoom();
-          await loadRooms();
-        } else if (action === 'dissolve') {
-          if (!confirm('解散后所有成员都将无法继续访问此群聊，确定解散吗？')) return;
-          await apiFetch(base, { method: 'DELETE' });
-          closeCurrentRoom();
-          await loadRooms();
-        }
-      } catch (e) {}
+  function renderGroupActions(room) {
+    groupActions.innerHTML = '';
+    const isOwner = room.owner_device_name === getMyDeviceName();
+    if (isOwner) {
+      addGroupAction('邀请成员', 'invite');
+      addGroupAction('修改群名', 'rename');
+      addGroupAction('转让群主', 'transfer');
+      addGroupAction('解散群聊', 'dissolve', true);
+    } else {
+      addGroupAction('退出群聊', 'leave', true);
+    }
+  }
+
+  async function refreshGroupMembers(room) {
+    groupModalTitle.textContent = `群组管理 · ${room.name}`;
+    groupMembers.textContent = '正在加载成员...';
+    groupActions.innerHTML = '';
+
+    const res = await apiFetch(`/api/chat/rooms/${room.id}/members`);
+    const data = await res.json();
+    const isOwner = room.owner_device_name === getMyDeviceName();
+    groupMembers.innerHTML = '';
+
+    data.members.forEach(member => {
+      const row = document.createElement('div');
+      row.className = 'group-member';
+      const name = document.createElement('div');
+      name.className = 'group-member-name';
+      name.textContent = member.alias && member.alias !== member.device_name
+        ? `${member.alias} · ${member.device_name}`
+        : member.device_name;
+
+      if (member.device_name === data.owner_device_name) {
+        const role = document.createElement('span');
+        role.className = 'group-member-role';
+        role.textContent = '群主';
+        name.appendChild(role);
+      }
+
+      row.appendChild(name);
+      if (isOwner && member.device_name !== getMyDeviceName()) {
+        const kickButton = document.createElement('button');
+        kickButton.type = 'button';
+        kickButton.className = 'group-member-kick';
+        kickButton.dataset.action = 'kick';
+        kickButton.dataset.deviceName = member.device_name;
+        kickButton.textContent = '踢出';
+        row.appendChild(kickButton);
+      }
+      groupMembers.appendChild(row);
     });
+
+    renderGroupActions(room);
+  }
+
+  async function openGroupModal() {
+    if (!currentRoom || currentRoom.type !== 'group') return;
+    groupModal.hidden = false;
+    groupMenuButton.setAttribute('aria-expanded', 'true');
+    try {
+      await refreshGroupMembers(currentRoom);
+    } catch (e) {
+      groupMembers.textContent = '成员加载失败，请稍后重试。';
+    }
+  }
+
+  function closeGroupModal() {
+    groupModal.hidden = true;
+    groupMenuButton.setAttribute('aria-expanded', 'false');
+  }
+
+  groupMenuButton.addEventListener('click', openGroupModal);
+  groupModalClose.addEventListener('click', closeGroupModal);
+  groupModal.addEventListener('click', event => {
+    if (event.target === groupModal) closeGroupModal();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !groupModal.hidden) closeGroupModal();
+  });
+
+  groupModal.addEventListener('click', async event => {
+    const button = event.target.closest('button[data-action]');
+    const action = button && button.dataset.action;
+    const room = currentRoom;
+    if (!action || !room) return;
+
+    const base = `/api/chat/rooms/${room.id}`;
+    const postForm = (path, values) => apiFetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(values).toString()
+    });
+
+    try {
+      if (action === 'kick') {
+        const deviceName = button.dataset.deviceName;
+        if (!await showConfirmModal('踢出成员', `确定将成员“${deviceName}”踢出群聊吗？`)) return;
+        await apiFetch(`${base}/members/${encodeURIComponent(deviceName)}`, { method: 'DELETE' });
+        showSuccess('已移除成员');
+        await refreshGroupMembers(room);
+      } else if (action === 'invite') {
+        const deviceName = await showInputModal('邀请成员', '请输入对方的设备名');
+        if (!deviceName || !deviceName.trim()) return;
+        await postForm(`${base}/members`, { device_name: deviceName.trim() });
+        showSuccess('已邀请成员');
+        await refreshGroupMembers(room);
+        await loadRooms();
+      } else if (action === 'rename') {
+        const name = await showInputModal('修改群名', '请输入新的群组名称');
+        if (!name || !name.trim()) return;
+        await apiFetch(base, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ name: name.trim() }).toString()
+        });
+        room.name = name.trim();
+        chatTitle.textContent = room.name;
+        groupModalTitle.textContent = `群组管理 · ${room.name}`;
+        renderRooms();
+        showSuccess('群名已更新');
+      } else if (action === 'transfer') {
+        const deviceName = await showInputModal('转让群主', '请输入新群主（必须是群成员）设备名');
+        if (!deviceName || !deviceName.trim()) return;
+        if (!await showConfirmModal('转让群主', `确定将群主转让给“${deviceName.trim()}”吗？`)) return;
+        await postForm(`${base}/transfer`, { device_name: deviceName.trim() });
+        room.owner_device_name = deviceName.trim();
+        showSuccess('群主已转让');
+        await refreshGroupMembers(room);
+      } else if (action === 'leave') {
+        if (!await showConfirmModal('退出群聊', '确定退出这个群聊吗？')) return;
+        await postForm(`${base}/leave`, {});
+        closeCurrentRoom();
+        await loadRooms();
+      } else if (action === 'dissolve') {
+        if (!await showConfirmModal('解散群聊', '解散后所有成员都将无法继续访问此群聊，确定解散吗？')) return;
+        await apiFetch(base, { method: 'DELETE' });
+        closeCurrentRoom();
+        await loadRooms();
+      }
+    } catch (e) {}
   });
 
   // 6. WebSocket 连接
