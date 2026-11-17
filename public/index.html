@@ -47,6 +47,7 @@
   .baidu:hover { background: #2932e1; border-color: #2932e1; }
   .kuaishou:hover { background: #ff4906; border-color: #ff4906; }
   .deepseek:hover { background: #4d6bfe; border-color: #4d6bfe; }
+  .chat:hover { background: #0f9d8a; border-color: #0f9d8a; }
 
   .modal-mask {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -96,9 +97,21 @@
     </div>
     <div class="quick-title">快 速 访 问</div>
     <div class="quick-links">
+      <a class="quick-btn chat" href="./chat.html"><span class="icon">💬</span>聊天室</a>
       <a class="quick-btn baidu" href="https://www.baidu.com"><span class="icon">🔍</span>百度</a>
       <a class="quick-btn kuaishou" href="https://www.kuaishou.com"><span class="icon">🎬</span>快手</a>
       <a class="quick-btn deepseek" href="https://chat.deepseek.com"><span class="icon">🤖</span>DeepSeek</a>
+    </div>
+  </div>
+
+  <div class="modal-mask" id="featureModal" role="dialog" aria-modal="true" aria-labelledby="featureModalTitle">
+    <div class="modal-card">
+      <div class="modal-icon">💬</div>
+      <h2 id="featureModalTitle">新功能上线：聊天室</h2>
+      <p>现在可以通过首页的「聊天室」快捷入口进入聊天室了。</p>
+      <div class="modal-actions">
+        <button class="btn-stay" id="featureModalDismiss">知道了</button>
+      </div>
     </div>
   </div>
 
@@ -118,14 +131,24 @@
   const input = document.getElementById('urlInput');
   const goBtn = document.getElementById('goBtn');
   const modalMask = document.getElementById('modalMask');
+  const featureModal = document.getElementById('featureModal');
   const stayBtn = document.getElementById('stayBtn');
   const leaveBtn = document.getElementById('leaveBtn');
   const STORAGE_KEY = 'nav_last_url';
+  const FEATURE_NOTICE_KEY = 'nav_chat_feature_notice_seen';
 
   let leaving = false;
 
   const saved = sessionStorage.getItem(STORAGE_KEY);
   if (saved) input.value = saved;
+
+  if (!localStorage.getItem(FEATURE_NOTICE_KEY)) {
+    featureModal.classList.add('show');
+    localStorage.setItem(FEATURE_NOTICE_KEY, '1');
+  }
+  document.getElementById('featureModalDismiss').addEventListener('click', () => {
+    featureModal.classList.remove('show');
+  });
 
   // 初始历史：E0（本页）← E1（哨兵）
   if (!history.state || !history.state.navGuard) {
@@ -176,7 +199,7 @@
       input.placeholder = '请先输入网址哦～';
       return;
     }
-    if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
     sessionStorage.setItem(STORAGE_KEY, input.value.trim());
     window.location.href = url;
   }
