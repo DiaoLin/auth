@@ -427,12 +427,36 @@
                 line-height: 1.4
             }
 
-            #url-import-status:not(:empty) {
+            #url-import-status.active {
                 display: block
             }
 
             #url-import-status.error {
                 color: #ff6b6b
+            }
+
+            #url-import-progress {
+                display: block;
+                width: 100%;
+                height: .7em;
+                margin: .55em 0
+            }
+
+            #url-import-log {
+                list-style: none;
+                max-height: 8em;
+                overflow: auto;
+                font-size: .9em;
+                color: #aaa
+            }
+
+            #url-import-log li {
+                padding: .15em 0
+            }
+
+            #url-import-log time {
+                color: #777;
+                margin-right: .4em
             }
 
             #import-log-section {
@@ -522,8 +546,12 @@
                 <p id=drop-zone-title>📂 Drop resources here — import and play instantly!</p>
                 <p id=drop-zone-subtitle>Drop a ZIP or folder containing <code>main.pak</code> & <code>properties/</code>, or pick one below:</p>
                 <div id=resource-split-actions><button id=browse-zip-btn class=resource-action type=button><strong>Import Resource ZIP</strong> <span>Select a ZIP package that contains <code>main.pak</code> and <code>properties/</code>.</span></button> <button id=browse-folder-btn class=resource-action type=button><strong>Select Resource Folder</strong> <span>Select a folder that directly contains <code>main.pak</code> and <code>properties/</code>.</span></button></div>
-                <div id=url-import-actions><input id=resource-url-input type=text placeholder="资源 ZIP 地址：完整 URL / 同源绝对路径（如 /resources.zip）/ 相对路径" autocomplete="off"><button id=download-url-btn class=resource-action type=button><strong>⬇ Download from URL</strong> <span>输入完整 URL、以 / 开头的同源绝对路径或相对路径，自动下载并导入（ZIP 需含 main.pak 与 properties/）。</span></button>
-                    <p id=url-import-status></p>
+                <div id=url-import-actions><input id=resource-url-input type=text value=/pvz-res.zip placeholder="资源 ZIP 地址：完整 URL / 同源绝对路径（如 /resources.zip）/ 相对路径" autocomplete="off"><button id=download-url-btn class=resource-action type=button><strong>⬇ Download from URL</strong> <span>输入完整 URL、以 / 开头的同源绝对路径或相对路径，自动下载并导入（ZIP 需含 main.pak 与 properties/）。</span></button>
+                    <div id=url-import-status aria-live=polite>
+                        <p id=url-import-message></p>
+                        <progress id=url-import-progress max=100 value=0 hidden aria-label="Download progress"></progress>
+                        <ol id=url-import-log></ol>
+                    </div>
                 </div>
                 <p id=drop-zone-ready-title>▶ Start Game</p>
                 <p id=drop-zone-ready-subtitle>Resources loaded successfully. Click here to launch!</p>
@@ -614,6 +642,19 @@
                 importLogEmpty.hidden = importLogList.children.length > 0
             }
 
+            function logUrlImportStep(message, isError) {
+                const status = document.getElementById("url-import-status"),
+                    log = document.getElementById("url-import-log"),
+                    item = document.createElement("li"),
+                    time = document.createElement("time"),
+                    now = new Date;
+                status.classList.add("active"), status.classList.toggle("error", !!isError);
+                time.dateTime = now.toISOString(), time.textContent = now.toLocaleTimeString(), item.append(time, document.createTextNode(message)), log.appendChild(item);
+                while (log.children.length > 100) log.firstElementChild.remove();
+                log.scrollTop = log.scrollHeight;
+                console.log("[Resource URL] " + message)
+            }
+
             function normalizeResourcePath(e) {
                 const t = e.replace(/\\/g, "/").replace(/^\/+/, "").split("/").filter(Boolean);
                 if (0 === t.length) return "";
@@ -690,12 +731,17 @@
             }
             async function importResourceFromUrl(e, t) {
                 const o = document.getElementById("resource-url-input");
+                const r = document.getElementById("url-import-message"),
+                    progress = document.getElementById("url-import-progress"),
+                    log = document.getElementById("url-import-log");
+                r.textContent = "", log.replaceChildren(), progress.hidden = !0, progress.removeAttribute("max"), progress.value = 0;
                 let n = (e || "").trim();
                 if (!n && o) n = o.value.trim();
                 n = n.trim();
-                const r = document.getElementById("url-import-status");
                 if (!n) {
                     const msg = "请先输入资源地址：完整 URL（http/https）、以 / 开头的同源绝对路径（如 /resources.zip）或相对路径均可。";
+                    logUrlImportStep(msg, !0);
+                    r.textContent = "❌ " + msg;
                     recordImport("Resource URL", !1, msg);
                     return void alert(msg)
                 }
@@ -705,6 +751,8 @@
                 else if (/^\//.test(n)) {
                     if ("file:" === location.protocol) {
                         const msg = "绝对路径下载需在通过 http(s) 访问的页面中使用（会从同源根目录下载）。请改用完整 URL，或先把 ZIP 存到本地再用「Import Resource ZIP」导入。";
+                        logUrlImportStep(msg, !0);
+                        r.textContent = "❌ " + msg;
                         recordImport("Resource URL", !1, msg);
                         alert(msg);
                         return;
@@ -713,6 +761,8 @@
                 } else {
                     if ("file:" === location.protocol) {
                         const msg = "相对路径下载需在通过 http(s) 访问的页面中使用。请改用完整 URL、以 / 开头的绝对路径，或使用本地导入。";
+                        logUrlImportStep(msg, !0);
+                        r.textContent = "❌ " + msg;
                         recordImport("Resource URL", !1, msg);
                         alert(msg);
                         return;
@@ -721,6 +771,8 @@
                         u = new URL(n, document.baseURI).href
                     } catch (e) {
                         const msg = e && e.message || String(e);
+                        logUrlImportStep("资源地址无效：" + msg, !0);
+                        r.textContent = "❌ 资源地址无效：" + msg;
                         recordImport("Resource URL", !1, msg);
                         alert("资源地址无效：" + msg);
                         return
@@ -729,44 +781,84 @@
                 t.disabled = !0;
                 const i = t.innerHTML;
                 try {
-                    if (r) {
-                        r.textContent = "⬇ 正在下载：" + u;
-                        r.classList.remove("error")
-                    }
+                    logUrlImportStep("地址已解析：" + u);
+                    r.textContent = "⬇ 正在下载：" + u;
                     t.textContent = "⬇ Downloading…";
+                    logUrlImportStep("开始请求资源 ZIP");
                     const a = await fetch(u, {
                         credentials: "same-origin"
                     });
+                    logUrlImportStep("服务器响应：" + a.status + " " + (a.statusText || ""));
                     if (!a.ok) throw new Error("HTTP " + a.status + " " + (a.statusText || ""));
+                    const total = Number(a.headers.get("content-length")) || 0,
+                        chunks = [];
+                    let received = 0,
+                        lastLoggedPercent = -1;
+                    progress.hidden = !1;
+                    if (total > 0) progress.max = total;
+                    else progress.removeAttribute("max");
+                    if (a.body && a.body.getReader) {
+                        const reader = a.body.getReader();
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            chunks.push(value);
+                            received += value.byteLength;
+                            progress.value = received;
+                            r.textContent = "⬇ 正在下载：" + (total > 0
+                                ? Math.min(100, Math.floor(received / total * 100)) + "%（" + formatDownloadSize(received) + " / " + formatDownloadSize(total) + "）"
+                                : formatDownloadSize(received) + "（总大小未知）");
+                            if (total > 0) {
+                                const percent = Math.floor(received / total * 100);
+                                if (percent >= lastLoggedPercent + 10 || percent >= 100) {
+                                    logUrlImportStep("下载进度：" + Math.min(100, percent) + "%（" + formatDownloadSize(received) + " / " + formatDownloadSize(total) + "）");
+                                    lastLoggedPercent = percent;
+                                }
+                            }
+                        }
+                    } else {
+                        const buffer = await a.arrayBuffer();
+                        chunks.push(new Uint8Array(buffer));
+                        received = buffer.byteLength;
+                        progress.value = received;
+                        r.textContent = "⬇ 已下载 " + formatDownloadSize(received) + (total > 0 ? " / " + formatDownloadSize(total) : "");
+                    }
+                    progress.max = Math.max(received, 1), progress.value = received;
+                    logUrlImportStep("下载完成，共 " + formatDownloadSize(received));
                     t.textContent = "⏳ Importing ZIP…";
-                    const b = await a.arrayBuffer();
+                    logUrlImportStep("开始解析 ZIP 文件");
                     let zip;
                     try {
-                        zip = await JSZip.loadAsync(b)
+                        zip = await JSZip.loadAsync(new Blob(chunks, {
+                            type: "application/zip"
+                        }))
                     } catch (e) {
                         throw new Error("下载的内容不是有效的 ZIP 压缩包。请确认地址指向包含 main.pak 与 properties/ 的 ZIP 文件。")
                     }
+                    const entries = Object.keys(zip.files).filter(e => !zip.files[e].dir);
+                    logUrlImportStep("ZIP 解析成功，包含 " + entries.length + " 个文件");
                     const c = await addZipEntriesToResources(zip);
                     if (0 === c) throw new Error("ZIP 中未找到任何可导入的资源文件。");
+                    logUrlImportStep("资源导入完成，共 " + c + " 个文件");
                     refreshUI();
-                    if (r) {
-                        r.textContent = "✅ 已导入 " + c + " 个资源文件（来源：" + u + "）";
-                        r.classList.remove("error")
-                    }
+                    logUrlImportStep("资源检查：main.pak " + (hasPak ? "已找到" : "缺失") + "，properties/ " + (hasProperties ? "已找到" : "缺失"), !hasPak || !hasProperties);
+                    r.textContent = "✅ 已导入 " + c + " 个资源文件（来源：" + u + "）";
                     recordImport("Resource URL", !0, "Imported " + c + " resource files")
                 } catch (a) {
                     console.error("URL resource import failed:", a);
                     const msg = (a && a.message) || String(a);
+                    logUrlImportStep("导入失败：" + msg, !0);
                     recordImport("Resource URL", !1, msg);
-                    if (r) {
-                        r.textContent = "❌ " + msg;
-                        r.classList.add("error")
-                    }
+                    r.textContent = "❌ " + msg;
                     alert("导入资源失败：" + msg + "\n\n若是跨域(CORS)限制，说明该服务器不允许浏览器直接下载；若是绝对路径，请确认该 ZIP 已放在站点根目录并可直接访问。\n可改用：先把 ZIP 存到本地，再用「Import Resource ZIP」导入。")
                 } finally {
                     t.disabled = !1;
                     t.innerHTML = i
                 }
+            }
+
+            function formatDownloadSize(bytes) {
+                return bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + " MiB" : bytes >= 1024 ? (bytes / 1024).toFixed(1) + " KiB" : bytes + " B"
             }
 
             function refreshUI() {
