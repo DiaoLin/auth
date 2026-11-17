@@ -82,7 +82,7 @@
 
 <div class="sidebar">
   <div class="sidebar-head">
-    <h2>聊天室</h2>
+    <h2>聊天室 v0.0.2</h2>
     <div class="alias-box">
       <input type="text" id="aliasInput" placeholder="设置显示别名" maxlength="20">
       <button id="saveAliasBtn">保存</button>
@@ -122,6 +122,7 @@
   const TOKEN_KEY = 'device_token';
   const token = localStorage.getItem(TOKEN_KEY);
   if (!token) {
+    
     window.location.replace('./check.html');
     return;
   }
@@ -167,6 +168,7 @@
       if (res.status === 401) {
         localStorage.removeItem(TOKEN_KEY);
         window.location.replace('./check.html');
+        setTimeout(() => {}, 5000);
         throw new Error('未授权或登录过期');
       }
 
