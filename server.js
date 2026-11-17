@@ -11,7 +11,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cors from 'cors';
-import chatRouter, { initWebSocket } from './chat-server.js'; // 引入聊天模块
+import { createChatRouter, initWebSocket } from './chat-server.js'; // 引入聊天模块（具名导入工厂函数）
 
 /* ============================================================
  * 1. 配置（依赖环境变量，无硬编码敏感信息）
@@ -780,7 +780,7 @@ adminRouter.post('/unban', async (req, res) => {
 app.use('/api/admin', adminRouter);
 
 // 将聊天路由挂载到 /api/chat
-app.use('/api/chat', chatRouter);
+app.use('/api/chat', createChatRouter(query));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not Found' }));
 

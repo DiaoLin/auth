@@ -2,8 +2,6 @@ import express from 'express';
 import crypto from 'node:crypto';
 import { WebSocketServer } from 'ws';
 
-const router = express.Router();
-
 /* ============================================================
  * 1. 鉴权中间件 (需传入 query)
  * ============================================================ */
