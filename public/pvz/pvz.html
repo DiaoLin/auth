@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plants vs. Zombies GOTY Edition - 植物大战僵尸年度版</title>
+  <script src="jszip.min.js"></script>
+  <style>
+    * { box-sizing: border-box }
+    html, body { width: 100%; min-height: 100%; margin: 0 }
+    body {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: #eee;
+      background: #1a1a2e;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    #start-screen {
+      width: min(440px, 100%);
+      text-align: center;
+    }
+    h1 { margin: 0 0 28px; color: #4ecca3; font-size: clamp(1.5rem, 6vw, 2rem) }
+    h1 span { display: block; margin-top: 8px; color: #eee; font-size: .82em }
+    #resource-url {
+      width: 100%;
+      padding: 13px 14px;
+      border: 1px solid #4ecca3;
+      border-radius: 8px;
+      color: #eee;
+      background: #222238;
+      font-size: 1rem;
+    }
+    #start-button, dialog button {
+      border: 1px solid #4ecca3;
+      border-radius: 8px;
+      padding: 12px 20px;
+      color: #10251f;
+      background: #4ecca3;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    #start-button { width: 100%; margin-top: 14px }
+    button:disabled { opacity: .55; cursor: wait }
+    #loading-status { min-height: 1.5em; margin: 18px 0 8px; color: #ddd }
+    progress { width: 100%; height: 12px; accent-color: #4ecca3 }
+    #canvas-container {
+      display: none;
+      position: fixed;
+      inset: 0;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      background: #000;
+    }
+    canvas { display: block; background: #000; outline: 0 }
+    #game-loading {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      align-content: center;
+      justify-items: center;
+      gap: 12px;
+      padding: 24px;
+      background: #000;
+    }
+    #game-loading[hidden] { display: none }
+    #game-loading p { margin: 0; color: #eee }
+    #game-loading progress { width: min(360px, 90%) }
+    dialog {
+      width: min(460px, calc(100vw - 32px));
+      max-height: 80vh;
+      overflow: auto;
+      margin: auto;
+      padding: 22px;
+      border: 1px solid #4ecca3;
+      border-radius: 12px;
+      color: #eee;
+      background: #1a1a2e;
+    }
+    dialog::backdrop { background: rgb(0 0 0 / 75%) }
+    dialog h2 { margin: 0 0 12px; color: #4ecca3; font-size: 1.25rem }
+    #cloud-save-status { min-height: 1.4em; color: #ff8b8b }
+    .cloud-save-slot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 12px 0;
+      padding: 12px;
+      border: 1px solid #44445a;
+      border-radius: 8px;
+    }
+    .cloud-save-slot p { margin: 0; overflow-wrap: anywhere }
+    .cloud-save-slot small { display: block; margin-top: 5px; color: #aaa }
+    .cloud-save-slot button, #cloud-save-continue {
+      flex: 0 0 auto;
+      padding: 8px 12px;
+      color: #4ecca3;
+      background: #2b2b40;
+    }
+    #cloud-save-continue { margin-top: 8px }
+    @media (max-width: 420px) {
+      body { padding: 18px }
+      .cloud-save-slot { align-items: flex-start; flex-direction: column }
+    }
+  </style>
+</head>
+<body>
+  <main id="start-screen">
+    <h1>Plants vs. Zombies GOTY Edition<span>植物大战僵尸年度版</span></h1>
+    <input id="resource-url" type="url" value="/pvz-res.zip" aria-label="资源下载地址" autocomplete="url">
+    <button id="start-button" type="button">开始游戏</button>
+    <p id="loading-status" role="status" aria-live="polite"></p>
+    <progress id="download-progress" max="100" value="0" hidden aria-label="资源下载进度"></progress>
+  </main>
+
+  <main id="canvas-container">
+    <canvas id="canvas" width="800" height="600" tabindex="0"></canvas>
+    <div id="game-loading" role="status" aria-live="polite">
+      <p id="game-loading-status">正在启动游戏…</p>
+      <progress id="game-progress" max="100" value="0"></progress>
+    </div>
+  </main>
+
+  <dialog id="cloud-save-dialog" aria-labelledby="cloud-save-title">
+    <h2 id="cloud-save-title">发现云存档</h2>
+    <p>选择一个存档导入，或直接继续游戏。</p>
+    <p id="cloud-save-status" role="status" aria-live="polite"></p>
+    <div id="cloud-save-list"></div>
+    <button id="cloud-save-continue" type="button">不导入，继续游戏</button>
+  </dialog>
+
+  <textarea id="pvz-soft-keyboard" autocapitalize="off" autocomplete="off" autocorrect="off" enterkeyhint="done" spellcheck="false" style="position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;opacity:0;resize:none;pointer-events:none;font-size:16px"></textarea>
+
+  <script>
+    window.moduleReadyPromise = new Promise((resolve, reject) => {
+      window._resolveModuleReady = resolve;
+      window._rejectModuleReady = reject;
+    });
+    var Module = {
+      canvas: document.getElementById("canvas"),
+      noInitialRun: true,
+      onRuntimeInitialized: () => window._resolveModuleReady(),
+      onAbort: (message) => window._rejectModuleReady(new Error(message)),
+      print: (message) => console.log(message),
+      printErr: (message) => console.warn(message)
+    };
+    Module.canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+  </script>
+  <script src="pvz-portable.js" async></script>
+  <script>
+    "use strict";
+    const startScreen = document.getElementById("start-screen");
+    const startButton = document.getElementById("start-button");
+    const resourceUrl = document.getElementById("resource-url");
+    const loadingStatus = document.getElementById("loading-status");
+    const downloadProgress = document.getElementById("download-progress");
+    const canvasContainer = document.getElementById("canvas-container");
+    const gameLoading = document.getElementById("game-loading");
+    const gameLoadingStatus = document.getElementById("game-loading-status");
+    const gameProgress = document.getElementById("game-progress");
+    const cloudSaveDialog = document.getElementById("cloud-save-dialog");
+    const cloudSaveList = document.getElementById("cloud-save-list");
+    const cloudSaveStatus = document.getElementById("cloud-save-status");
+    const cloudSaveContinue = document.getElementById("cloud-save-continue");
+    const resourceFiles = new Map();
+    let cloudSaveImporting = false;
+    let cloudSaveWarning = "";
+    let saveFsReadyPromise = null;
+
+    function setProgress(value, max) {
+      for (const progress of [downloadProgress, gameProgress]) {
+        progress.hidden = false;
+        if (max > 0) {
+          progress.max = max;
+          progress.value = value;
+        } else {
+          progress.removeAttribute("max");
+          progress.removeAttribute("value");
+        }
+      }
+    }
+
+    function normalizeResourcePath(path) {
+      const parts = path.replace(/\\/g, "/").replace(/^\/+/, "").split("/").filter(Boolean);
+      if (!parts.length) return "";
+      const resourceIndex = parts.findIndex((part, index) =>
+        index <= 2 && (part === "main.pak" || part === "properties")
+      );
+      return resourceIndex >= 0 ? parts.slice(resourceIndex).join("/") :
+        parts.length > 1 ? parts.slice(1).join("/") : parts[0];
+    }
+
+    function resolveResourceUrl(value) {
+      const input = value.trim();
+      if (!input) throw new Error("请输入资源下载地址。");
+      if (/^https?:\/\//i.test(input) || /^\/\//.test(input)) {
+        return new URL(input.startsWith("//") ? location.protocol + input : input).href;
+      }
+      if (location.protocol === "file:") {
+        throw new Error("请通过网页访问本页面后再下载资源。");
+      }
+      return new URL(input, document.baseURI).href;
+    }
+
+    async function downloadResources() {
+      const url = resolveResourceUrl(resourceUrl.value);
+      loadingStatus.textContent = "正在下载游戏资源…";
+      downloadProgress.hidden = false;
+      downloadProgress.removeAttribute("max");
+      downloadProgress.removeAttribute("value");
+      const response = await fetch(url, { credentials: "same-origin" });
+      if (!response.ok) throw new Error("资源下载失败（HTTP " + response.status + "）。");
+
+      const total = Number(response.headers.get("content-length")) || 0;
+      const chunks = [];
+      let received = 0;
+      if (response.body && response.body.getReader) {
+        const reader = response.body.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.byteLength;
+          if (total > 0) {
+            setProgress(received, total);
+            loadingStatus.textContent = "正在下载游戏资源… " +
+              Math.min(100, Math.floor(received / total * 100)) + "%";
+          } else {
+            setProgress(0, 0);
+            loadingStatus.textContent = "正在下载游戏资源… " + formatSize(received);
+          }
+        }
+      } else {
+        const buffer = await response.arrayBuffer();
+        chunks.push(new Uint8Array(buffer));
+        received = buffer.byteLength;
+        if (total > 0) setProgress(received, total);
+      }
+      setProgress(Math.max(received, 1), Math.max(total, received, 1));
+      loadingStatus.textContent = "正在解压并导入资源…";
+      const zip = await JSZip.loadAsync(new Blob(chunks, { type: "application/zip" }));
+      resourceFiles.clear();
+      for (const [path, entry] of Object.entries(zip.files)) {
+        if (entry.dir) continue;
+        const normalizedPath = normalizeResourcePath(path);
+        if (normalizedPath) resourceFiles.set(normalizedPath, await entry.async("uint8array"));
+      }
+      if (!resourceFiles.has("main.pak") ||
+          !Array.from(resourceFiles.keys()).some((path) => path.startsWith("properties/"))) {
+        throw new Error("资源包不完整，未找到 main.pak 或 properties 文件夹。");
+      }
+      loadingStatus.textContent = "资源导入完成。";
+    }
+
+    function formatSize(bytes) {
+      return bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + " MiB" :
+        bytes >= 1024 ? (bytes / 1024).toFixed(1) + " KiB" : bytes + " B";
+    }
+
+    async function cloudSaveApi(path) {
+      let token;
+      try {
+        token = localStorage.getItem("device_token");
+      } catch {
+        throw new Error("无法读取设备登录信息。");
+      }
+      if (!token) return null;
+      const response = await fetch("/api/cloud-saves" + path, {
+        cache: "no-store",
+        headers: { Authorization: "Bearer " + token }
+      });
+      if (response.status === 401) return null;
+      if (!response.ok) throw new Error("无法读取云存档（HTTP " + response.status + "）。");
+      return response;
+    }
+
+    async function findCloudSaves() {
+      const response = await cloudSaveApi("");
+      if (!response) return [];
+      const data = await response.json();
+      return (data.slots || []).filter((save) => save.name);
+    }
+
+    async function ensureSaveFsReady() {
+      if (!saveFsReadyPromise) {
+        saveFsReadyPromise = (async () => {
+          await window.moduleReadyPromise;
+          if (!Module.FS.analyzePath("/saves").exists) Module.FS.mkdir("/saves");
+          Module.FS.mount(Module.FS.filesystems.IDBFS, {}, "/saves");
+          await new Promise((resolve, reject) => Module.FS.syncfs(true, (error) =>
+            error ? reject(error) : resolve()
+          ));
+        })();
+      }
+      return saveFsReadyPromise;
+    }
+
+    function collectSaveFiles(directory) {
+      if (!Module.FS.analyzePath(directory).exists) return [];
+      const entries = Module.FS.readdir(directory);
+      const files = [];
+      for (const entry of entries) {
+        if (entry === "." || entry === "..") continue;
+        const path = directory + "/" + entry;
+        const stat = Module.FS.stat(path);
+        if (Module.FS.isDir(stat.mode)) files.push(...collectSaveFiles(path));
+        else files.push(path);
+      }
+      return files;
+    }
+
+    async function importCloudSave(save) {
+      const response = await cloudSaveApi("/" + save.slot);
+      if (!response) throw new Error("登录设备后才能使用云存档。");
+      const zip = await JSZip.loadAsync(await response.blob());
+      const entries = Object.entries(zip.files).filter(([, entry]) => !entry.dir);
+      if (!entries.length || entries.length > 1000) throw new Error("云存档文件数量无效。");
+      const files = [];
+      let totalSize = 0;
+      for (const [entryPath, entry] of entries) {
+        let path = entryPath.replace(/\\/g, "/").replace(/^\/+/, "");
+        if (path.startsWith("userdata/")) path = path.slice(9);
+        const parts = path.split("/");
+        if (!path || parts.some((part) => !part || part === "." || part === "..")) {
+          throw new Error("云存档包含无效文件路径。");
+        }
+        const contents = await entry.async("uint8array");
+        totalSize += contents.byteLength;
+        if (totalSize > 50 * 1024 * 1024) throw new Error("云存档解压后超过 50 MiB。");
+        files.push({ path: parts.join("/"), contents });
+      }
+
+      await ensureSaveFsReady();
+      const currentFiles = collectSaveFiles("/saves/userdata");
+      if (currentFiles.length &&
+          !confirm("导入云存档将替换本机存档，是否继续？")) return false;
+      for (const path of currentFiles) Module.FS.unlink(path);
+      function removeDirectories(directory) {
+        if (!Module.FS.analyzePath(directory).exists) return;
+        const entries = Module.FS.readdir(directory);
+        for (const entry of entries) {
+          if (entry === "." || entry === "..") continue;
+          const path = directory + "/" + entry;
+          if (Module.FS.isDir(Module.FS.stat(path).mode)) {
+            removeDirectories(path);
+            Module.FS.rmdir(path);
+          }
+        }
+      }
+      removeDirectories("/saves/userdata");
+      if (!Module.FS.analyzePath("/saves/userdata").exists) Module.FS.mkdir("/saves/userdata");
+      for (const file of files) {
+        const path = "/saves/userdata/" + file.path;
+        Module.FS.mkdirTree(path.slice(0, path.lastIndexOf("/")));
+        Module.FS.writeFile(path, file.contents);
+      }
+      await new Promise((resolve, reject) => Module.FS.syncfs(false, (error) =>
+        error ? reject(error) : resolve()
+      ));
+      return true;
+    }
+
+    async function showCloudSaveDialog(saves) {
+      cloudSaveList.replaceChildren();
+      cloudSaveStatus.textContent = "";
+      for (const save of saves) {
+        const card = document.createElement("section");
+        const details = document.createElement("p");
+        const title = document.createElement("strong");
+        const updated = document.createElement("small");
+        const loadButton = document.createElement("button");
+        card.className = "cloud-save-slot";
+        title.textContent = save.name;
+        updated.textContent = save.updated_at
+          ? "更新时间：" + new Date(save.updated_at).toLocaleString("zh-CN")
+          : "";
+        details.append(title, updated);
+        loadButton.type = "button";
+        loadButton.textContent = "导入";
+        loadButton.addEventListener("click", async () => {
+          cloudSaveImporting = true;
+          cloudSaveContinue.disabled = true;
+          for (const button of cloudSaveList.querySelectorAll("button")) button.disabled = true;
+          cloudSaveStatus.textContent = "正在导入云存档…";
+          try {
+            const imported = await importCloudSave(save);
+            if (imported) cloudSaveDialog.close();
+            else {
+              cloudSaveStatus.textContent = "";
+              for (const button of cloudSaveList.querySelectorAll("button")) button.disabled = false;
+            }
+          } catch (error) {
+            cloudSaveStatus.textContent = error.message || "云存档导入失败。";
+            for (const button of cloudSaveList.querySelectorAll("button")) button.disabled = false;
+          } finally {
+            cloudSaveImporting = false;
+            cloudSaveContinue.disabled = false;
+          }
+        });
+        card.append(details, loadButton);
+        cloudSaveList.appendChild(card);
+      }
+      cloudSaveDialog.showModal();
+      return new Promise((resolve) => {
+        cloudSaveDialog.addEventListener("close", resolve, { once: true });
+      });
+    }
+
+    async function startGame() {
+      startButton.disabled = true;
+      resourceUrl.disabled = true;
+      loadingStatus.textContent = "";
+      downloadProgress.hidden = true;
+      try {
+        await downloadResources();
+        loadingStatus.textContent = "正在检查云存档…";
+        let saves = [];
+        try {
+          saves = await findCloudSaves();
+        } catch (error) {
+          cloudSaveWarning = "云存档暂时无法读取，正在继续启动游戏…";
+          loadingStatus.textContent = cloudSaveWarning;
+        }
+        if (saves.length) await showCloudSaveDialog(saves);
+
+        startScreen.style.display = "none";
+        canvasContainer.style.display = "flex";
+        gameLoading.hidden = false;
+        gameLoadingStatus.textContent = cloudSaveWarning || "正在加载游戏…";
+        await window.moduleReadyPromise;
+        const entries = Array.from(resourceFiles.entries());
+        const total = entries.reduce((sum, [, contents]) => sum + contents.byteLength, 0);
+        let written = 0;
+        setProgress(0, Math.max(total, 1));
+        for (let index = 0; index < entries.length; index++) {
+          const [path, contents] = entries[index];
+          const fullPath = "/" + path;
+          const directory = fullPath.slice(0, fullPath.lastIndexOf("/"));
+          if (directory) Module.FS.mkdirTree(directory);
+          Module.FS.writeFile(fullPath, contents);
+          written += contents.byteLength;
+          setProgress(written, Math.max(total, 1));
+          gameLoadingStatus.textContent = "正在载入游戏资源… " +
+            (index + 1) + " / " + entries.length;
+          if ((index + 1) % 4 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+        gameLoadingStatus.textContent = "正在读取本机存档…";
+        await ensureSaveFsReady();
+        gameLoading.hidden = true;
+        Module.callMain([]);
+        resourceFiles.clear();
+      } catch (error) {
+        canvasContainer.style.display = "none";
+        gameLoading.hidden = false;
+        startScreen.style.display = "";
+        loadingStatus.textContent = error.message || "游戏启动失败，请检查资源地址后重试。";
+        startButton.disabled = false;
+        resourceUrl.disabled = false;
+        resourceFiles.clear();
+      }
+    }
+
+    cloudSaveContinue.addEventListener("click", () => cloudSaveDialog.close());
+    cloudSaveDialog.addEventListener("cancel", (event) => {
+      if (cloudSaveImporting) event.preventDefault();
+    });
+    startButton.addEventListener("click", startGame);
+    resourceUrl.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !startButton.disabled) startGame();
+    });
+  </script>
+</body>
+</html>
