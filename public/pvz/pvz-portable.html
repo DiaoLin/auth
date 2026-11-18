@@ -289,6 +289,85 @@
                 cursor: default
             }
 
+            #cloud-save-dialog {
+                width: min(540px, calc(100vw - 32px));
+                max-height: min(80vh, 680px);
+                margin: auto;
+                padding: 1.25em;
+                color: #eee;
+                background: #1a1a2e;
+                border: 1px solid #4ecca3;
+                border-radius: 12px
+            }
+
+            #cloud-save-dialog::backdrop {
+                background: rgba(0, 0, 0, .75)
+            }
+
+            #cloud-save-dialog h2 {
+                color: #4ecca3;
+                margin-bottom: .75em
+            }
+
+            #cloud-save-dialog p {
+                margin: .5em 0;
+                color: #bbb
+            }
+
+            #cloud-save-status.error {
+                color: #e74c3c
+            }
+
+            #cloud-save-status a {
+                color: #4ecca3
+            }
+
+            #cloud-save-list {
+                display: grid;
+                gap: .65em;
+                margin: 1em 0
+            }
+
+            .cloud-save-slot {
+                padding: .8em;
+                border: 1px solid #44445a;
+                border-radius: 8px;
+                text-align: left
+            }
+
+            .cloud-save-slot strong,
+            .cloud-save-slot small {
+                display: block;
+                overflow-wrap: anywhere
+            }
+
+            .cloud-save-slot small {
+                margin-top: .3em;
+                color: #999
+            }
+
+            .cloud-save-slot-actions,
+            #cloud-save-dialog-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: .5em;
+                margin-top: .65em
+            }
+
+            #cloud-save-dialog button {
+                padding: .5em .75em;
+                color: #4ecca3;
+                background: #2b2b40;
+                border: 1px solid #4ecca3;
+                border-radius: 6px;
+                cursor: pointer
+            }
+
+            #cloud-save-dialog button:disabled {
+                opacity: .5;
+                cursor: default
+            }
+
             #canvas-container {
                 display: none;
                 width: 100vw;
@@ -566,14 +645,22 @@
                 <ol id=import-log aria-live=polite aria-relevant=additions></ol>
                 <p id=import-log-empty>No imports yet.</p>
             </section>
-            <div id=upload-save-actions><button id=upload-save-import-btn title="Import saves from ZIP before starting">Import Save ZIP</button> <button id=upload-save-import-dir-btn title="Import saves from a folder before starting">Import Save Folder</button> <button id=upload-save-clear-btn title="Delete all saved data stored in this browser">Clear Browser Saves</button></div><input id=upload-save-import-input type=file style=display:none accept=.zip> <input id=upload-save-import-dir-input type=file style=display:none multiple webkitdirectory>
-            <p class=note>Your files stay in your browser and are never uploaded to any server.<br>Resources can be loaded from a ZIP package or a resource folder. Saves are stored locally in your browser via IndexedDB and can be imported from ZIP or folder.</p>
+            <div id=upload-save-actions><button id=upload-save-import-btn title="Import saves from ZIP before starting">Import Save ZIP</button> <button id=upload-save-import-dir-btn title="Import saves from a folder before starting">Import Save Folder</button> <button id=upload-save-clear-btn title="Delete all saved data stored in this browser">Clear Browser Saves</button> <button class=cloud-save-open-btn type=button>☁️ Cloud Saves</button></div><input id=upload-save-import-input type=file style=display:none accept=.zip> <input id=upload-save-import-dir-input type=file style=display:none multiple webkitdirectory>
+            <p class=note>Resources are loaded locally. Saves are stored in this browser via IndexedDB; cloud saves are uploaded only when you choose to use the cloud-save feature.</p>
             <p class=note>Starting the game indicates that you have read the notices above and acknowledge the no-warranty terms of the LGPL v3.0-or-later license for this code.</p>
             <p class=note>Copyright (C) 2026 Zhou Qiankang &lt;<a href=mailto:wszqkzqk@qq.com style=color:#4ecca3;text-decoration:underline>wszqkzqk@qq.com</a>></p>
         </div>
         <div id=canvas-container>
-            <div id=save-toolbar><button id=save-export-btn title="Export saves as ZIP">💾 Export Saves</button></div><canvas height=600 id=canvas tabindex=0 width=800></canvas>
+            <div id=save-toolbar><button id=save-export-btn title="Export saves as ZIP">💾 Export Saves</button><button class=cloud-save-open-btn type=button>☁️ Cloud Saves</button></div><canvas height=600 id=canvas tabindex=0 width=800></canvas>
         </div><textarea autocapitalize=off autocomplete=off autocorrect=off enterkeyhint=done id=pvz-soft-keyboard spellcheck=false></textarea>
+        <dialog id=cloud-save-dialog aria-labelledby=cloud-save-title>
+            <h2 id=cloud-save-title>Cloud Saves</h2>
+            <p>Two slots per device. Each save is limited to 10 MiB.</p>
+            <p id=cloud-save-status aria-live=polite></p>
+            <p id=cloud-save-login hidden><a href=/check.html>Sign in with your device</a> to use cloud saves.</p>
+            <div id=cloud-save-list></div>
+            <div id=cloud-save-dialog-actions><button id=cloud-save-refresh type=button>Refresh</button><button id=cloud-save-close type=button>Close</button></div>
+        </dialog>
         <script>
             window.moduleReadyPromise = new Promise(function(n, e) {
                 window._resolveModuleReady = n, window._rejectModuleReady = e
@@ -625,6 +712,10 @@
                 uploadSaveClearBtn = document.getElementById("upload-save-clear-btn"),
                 uploadSaveImportInput = document.getElementById("upload-save-import-input"),
                 uploadSaveImportDirInput = document.getElementById("upload-save-import-dir-input"),
+                cloudSaveDialog = document.getElementById("cloud-save-dialog"),
+                cloudSaveList = document.getElementById("cloud-save-list"),
+                cloudSaveStatus = document.getElementById("cloud-save-status"),
+                cloudSaveLogin = document.getElementById("cloud-save-login"),
                 reselectLink = document.getElementById("reselect-link"),
                 importLogList = document.getElementById("import-log"),
                 importLogEmpty = document.getElementById("import-log-empty"),
@@ -986,6 +1077,211 @@
                     e.disabled = !1, e.textContent = "💾 Export Saves"
                 }
             }
+            async function cloudSaveApi(path, options) {
+                let token;
+                try {
+                    token = localStorage.getItem("device_token")
+                } catch (e) {
+                    throw new Error("Browser storage is unavailable.")
+                }
+                if (!token) {
+                    const error = new Error("Sign in with a device before using cloud saves.");
+                    error.status = 401;
+                    throw error
+                }
+                const headers = new Headers(options && options.headers || {});
+                headers.set("Authorization", "Bearer " + token);
+                const response = await fetch("/api/cloud-saves" + path, Object.assign({}, options, {
+                    headers: headers
+                }));
+                if (!response.ok) {
+                    const data = await response.json();
+                    const error = new Error(data.error || "Cloud save request failed (" + response.status + ").");
+                    error.status = response.status;
+                    throw error
+                }
+                return response
+            }
+            function setCloudSaveStatus(message, isError) {
+                cloudSaveStatus.textContent = message;
+                cloudSaveStatus.classList.toggle("error", !!isError)
+            }
+            async function refreshCloudSaveList() {
+                cloudSaveList.replaceChildren();
+                cloudSaveLogin.hidden = !0;
+                try {
+                    const response = await cloudSaveApi("", {
+                        cache: "no-store"
+                    });
+                    const data = await response.json();
+                    cloudSaveLogin.hidden = !0;
+                    setCloudSaveStatus("", !1);
+                    for (const save of data.slots) {
+                        const card = document.createElement("section"),
+                            title = document.createElement("strong"),
+                            details = document.createElement("small"),
+                            actions = document.createElement("div"),
+                            upload = document.createElement("button");
+                        card.className = "cloud-save-slot";
+                        title.textContent = "Slot " + save.slot + (save.name ? " — " + save.name : " — Empty");
+                        details.textContent = save.updated_at
+                            ? "Changed " + new Date(save.updated_at).toLocaleString() + " · " + formatDownloadSize(save.size_bytes)
+                            : "No cloud save";
+                        actions.className = "cloud-save-slot-actions";
+                        upload.type = "button";
+                        upload.textContent = save.name ? "Replace & Upload" : "Upload Current Save";
+                        upload.addEventListener("click", () => uploadCloudSave(save));
+                        actions.appendChild(upload);
+                        if (save.name) {
+                            const load = document.createElement("button"),
+                                rename = document.createElement("button"),
+                                remove = document.createElement("button");
+                            load.type = rename.type = remove.type = "button";
+                            load.textContent = "Import";
+                            rename.textContent = "Rename";
+                            remove.textContent = "Delete";
+                            load.addEventListener("click", () => importCloudSave(save));
+                            rename.addEventListener("click", () => renameCloudSave(save));
+                            remove.addEventListener("click", () => deleteCloudSave(save));
+                            actions.append(load, rename, remove)
+                        }
+                        card.append(title, details, actions);
+                        cloudSaveList.appendChild(card)
+                    }
+                } catch (error) {
+                    setCloudSaveStatus(error.message || String(error), !0);
+                    cloudSaveLogin.hidden = !!(error.status === 401)
+                }
+            }
+            async function uploadCloudSave(save) {
+                const defaultName = save.name || "PVZ Save " + new Date().toLocaleDateString();
+                const name = prompt("Name this cloud save (up to 40 characters):", defaultName);
+                if (name === null) return;
+                if (save.name && !confirm("Replace cloud save “" + save.name + "”?")) return;
+                try {
+                    setCloudSaveStatus("Preparing save…", !1);
+                    await ensureSaveFsReady();
+                    await syncSaves();
+                    const files = collectSaveFiles("/saves/userdata");
+                    if (!files.length) throw new Error("No local save data found.");
+                    const zip = new JSZip;
+                    for (const file of files) zip.file(file.replace(/^\/saves\//, ""), Module.FS.readFile(file));
+                    const data = await zip.generateAsync({
+                        type: "uint8array",
+                        compression: "DEFLATE",
+                        compressionOptions: {
+                            level: 6
+                        }
+                    });
+                    await cloudSaveApi("/" + save.slot + "?name=" + encodeURIComponent(name.trim()), {
+                        method: "PUT",
+                        headers: {
+                            "Content-Type": "application/octet-stream"
+                        },
+                        body: data
+                    });
+                    setCloudSaveStatus("Cloud save uploaded.", !1);
+                    await refreshCloudSaveList()
+                } catch (error) {
+                    setCloudSaveStatus(error.message || String(error), !0)
+                }
+            }
+            async function importCloudSave(save) {
+                try {
+                    setCloudSaveStatus("Downloading cloud save…", !1);
+                    const response = await cloudSaveApi("/" + save.slot, {
+                        cache: "no-store"
+                    });
+                    const zip = await JSZip.loadAsync(await response.blob()),
+                        entries = Object.keys(zip.files).filter(path => !zip.files[path].dir);
+                    if (!entries.length || entries.length > 1000) throw new Error("Cloud save archive has an invalid number of files.");
+                    const files = [];
+                    let totalSize = 0;
+                    for (const entry of entries) {
+                        let relative = entry.replace(/\\/g, "/").replace(/^\/+/, "");
+                        if (relative.startsWith("userdata/")) relative = relative.slice(9);
+                        const parts = relative.split("/");
+                        if (!relative || parts.some(part => !part || "." === part || ".." === part)) throw new Error("Cloud save contains an invalid file path.");
+                        const contents = await zip.files[entry].async("uint8array");
+                        totalSize += contents.byteLength;
+                        if (totalSize > 50 * 1024 * 1024) throw new Error("Cloud save expands beyond the 50 MiB import limit.");
+                        files.push({
+                            path: parts.join("/"),
+                            contents: contents
+                        })
+                    }
+                    await ensureSaveFsReady();
+                    const current = collectSaveFiles("/saves/userdata");
+                    if (current.length && !confirm("This will replace " + current.length + " local save files. Continue?")) return;
+                    for (const file of current) Module.FS.unlink(file);
+                    function removeSaveDirectories(directory) {
+                        let entries;
+                        try {
+                            entries = Module.FS.readdir(directory)
+                        } catch (e) {
+                            return
+                        }
+                        for (const entry of entries) {
+                            if ("." === entry || ".." === entry) continue;
+                            const child = directory + "/" + entry;
+                            if (Module.FS.isDir(Module.FS.stat(child).mode)) {
+                                removeSaveDirectories(child);
+                                Module.FS.rmdir(child)
+                            }
+                        }
+                    }
+                    removeSaveDirectories("/saves/userdata");
+                    try {
+                        Module.FS.mkdir("/saves/userdata")
+                    } catch (e) {}
+                    for (const file of files) {
+                        const path = "/saves/userdata/" + file.path,
+                            directories = path.split("/");
+                        let directory = "";
+                        for (let i = 1; i < directories.length - 1; i++) {
+                            directory += "/" + directories[i];
+                            try {
+                                Module.FS.mkdir(directory)
+                            } catch (e) {}
+                        }
+                        Module.FS.writeFile(path, file.contents)
+                    }
+                    await syncSaves();
+                    recordImport("Cloud save (" + save.name + ")", !0, "Imported " + files.length + " files");
+                    setCloudSaveStatus("Cloud save imported.", !1)
+                } catch (error) {
+                    setCloudSaveStatus(error.message || String(error), !0)
+                }
+            }
+            async function renameCloudSave(save) {
+                const name = prompt("New name (up to 40 characters):", save.name);
+                if (name === null) return;
+                try {
+                    await cloudSaveApi("/" + save.slot, {
+                        method: "PATCH",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            name: name.trim()
+                        })
+                    });
+                    await refreshCloudSaveList()
+                } catch (error) {
+                    setCloudSaveStatus(error.message || String(error), !0)
+                }
+            }
+            async function deleteCloudSave(save) {
+                if (!confirm("Delete cloud save “" + save.name + "”?")) return;
+                try {
+                    await cloudSaveApi("/" + save.slot, {
+                        method: "DELETE"
+                    });
+                    await refreshCloudSaveList()
+                } catch (error) {
+                    setCloudSaveStatus(error.message || String(error), !0)
+                }
+            }
             async function importSaves(e, t) {
                 t.disabled = !0;
                 const n = t.textContent,
@@ -1139,7 +1435,11 @@
                 "Enter" !== e.key && " " !== e.key || (e.preventDefault(), handleDropZoneActivate(e))
             }), reselectLink.addEventListener("click", e => {
                 e.stopPropagation(), collectedFiles.clear(), fileInput.value = "", resourceZipInput.value = "", refreshUI()
-            }), window.addEventListener("fullscreenchange", resizeCanvas), document.getElementById("save-export-btn").addEventListener("click", exportSaves), uploadSaveImportBtn.addEventListener("click", () => {
+            }), document.querySelectorAll(".cloud-save-open-btn").forEach(button => {
+                button.addEventListener("click", () => {
+                    cloudSaveDialog.showModal(), refreshCloudSaveList()
+                })
+            }), document.getElementById("cloud-save-close").addEventListener("click", () => cloudSaveDialog.close()), document.getElementById("cloud-save-refresh").addEventListener("click", refreshCloudSaveList), window.addEventListener("fullscreenchange", resizeCanvas), document.getElementById("save-export-btn").addEventListener("click", exportSaves), uploadSaveImportBtn.addEventListener("click", () => {
                 uploadSaveImportInput.click()
             }), uploadSaveImportInput.addEventListener("change", e => {
                 const t = e.target.files[0];
