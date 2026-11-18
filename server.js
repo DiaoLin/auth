@@ -12,6 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cors from 'cors';
 import { createChatRouter, initWebSocket } from './chat-server.js'; // 引入聊天模块（具名导入工厂函数）
+import { createCloudSavesRouter, initCloudSavesDb } from './cloud-saves.js';
 
 /* ============================================================
  * 1. 配置（依赖环境变量，无硬编码敏感信息）
@@ -172,6 +173,7 @@ async function initDb() {
     )
     WHERE r.type = 'group' AND r.owner_device_name IS NULL;
   `);
+  await initCloudSavesDb(query);
 }
 
 /* ============================================================
@@ -791,6 +793,7 @@ app.use('/api/admin', adminRouter);
 
 // 将聊天路由挂载到 /api/chat
 app.use('/api/chat', createChatRouter(query));
+app.use('/api/cloud-saves', createCloudSavesRouter(query));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not Found' }));
 
