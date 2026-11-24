@@ -800,6 +800,8 @@
                 saveSyncQueued = !1,
                 lastSaveSyncAt = 0,
                 saveFsReadyPromise = null,
+                resourcesInstalled = !1,
+                needsRuntimeReload = !1,
                 viewMode = "fit",
                 viewScale = 1;
             const SAVE_SYNC_INTERVAL_MS = 5e3,
@@ -831,7 +833,7 @@
                 importLogList = document.getElementById("import-log"),
                 importLogEmpty = document.getElementById("import-log-empty"),
                 clearImportLogBtn = document.getElementById("clear-import-log-btn");
-            let runtimeReloadScheduled = !1;
+
             let appModalResolve = null,
                 appModalQueue = Promise.resolve(),
                 appModalHasInput = false,
@@ -1201,28 +1203,106 @@
                     syncSaves()
                 }, 5e3))
             }
+            async function writeResourcesToFs() {
+                if (resourcesInstalled) return;
+                const e = Array.from(collectedFiles.entries());
+                let t = 0;
+                const n = e.reduce((e, [, t]) => e + t.size, 0);
+                for (let a = 0; a < e.length; a++) {
+                    const [o, s] = e[a];
+                    loadStatus.textContent = "Writing resources… " + (a + 1) + "/" + e.length + ", " + (t / 1048576).toFixed(1) + "/" + (n / 1048576).toFixed(1) + " MiB";
+                    const r = new Uint8Array(await s.arrayBuffer()),
+                        i = o.split("/");
+                    let l = "/";
+                    for (let e = 0; e < i.length - 1; e++) {
+                        l += ("/" === l ? "" : "/") + i[e];
+                        try {
+                            Module.FS.mkdir(l)
+                        } catch (e) {}
+                    }
+                    Module.FS.writeFile("/" + o, r), t += s.size, (a + 1) % 4 == 0 && await new Promise(e => setTimeout(e, 0))
+                }
+                resourcesInstalled = !0
+            }
+
+            function setupModuleGlobals() {
+                window.moduleReadyPromise = new Promise(function(n, e) {
+                    window._resolveModuleReady = n, window._rejectModuleReady = e
+                });
+                window.Module = {
+                    canvas: document.getElementById("canvas"),
+                    noInitialRun: !0,
+                    onRuntimeInitialized: function() {
+                        window._resolveModuleReady()
+                    },
+                    onAbort: function(n) {
+                        window._rejectModuleReady(new Error(n))
+                    },
+                    print: function(n) {
+                        console.log(n)
+                    },
+                    printErr: function(n) {
+                        console.warn(n)
+                    }
+                };
+                Module.canvas.addEventListener("contextmenu", function(n) {
+                    n.preventDefault()
+                })
+            }
+
+            async function reloadWasmRuntime() {
+                try {
+                    var oldSDL2 = window.Module && window.Module.SDL2;
+                    if (oldSDL2 && oldSDL2.audio) {
+                        if (oldSDL2.audio.silenceTimer !== void 0) clearInterval(oldSDL2.audio.silenceTimer);
+                        if (oldSDL2.audio.scriptProcessorNode) {
+                            oldSDL2.audio.scriptProcessorNode.onaudioprocess = function() {};
+                            oldSDL2.audio.scriptProcessorNode.disconnect()
+                        }
+                    }
+                    if (oldSDL2 && oldSDL2.capture) {
+                        if (oldSDL2.capture.silenceTimer !== void 0) clearInterval(oldSDL2.capture.silenceTimer);
+                        if (oldSDL2.capture.scriptProcessorNode) {
+                            oldSDL2.capture.scriptProcessorNode.onaudioprocess = function() {};
+                            oldSDL2.capture.scriptProcessorNode.disconnect()
+                        }
+                    }
+                    if (oldSDL2 && oldSDL2.audioContext && typeof oldSDL2.audioContext.close === "function") oldSDL2.audioContext.close()
+                } catch (e) {
+                    console.warn("Failed to close old audio:", e)
+                }
+                setupModuleGlobals();
+                var response = await fetch("pvz-portable.js", { cache: "force-cache" });
+                if (!response.ok) throw new Error("Failed to reload game runtime.");
+                var source = await response.text();
+                new Function("Module", source + "\n//# sourceURL=pvz-portable.js")(window.Module);
+                await window.moduleReadyPromise;
+                savesMounted = !1;
+                saveFsReadyPromise = null;
+                resourcesInstalled = !1;
+                needsRuntimeReload = !1
+            }
+
+            async function launchGame() {
+                if (needsRuntimeReload) await reloadWasmRuntime();
+                await window.moduleReadyPromise;
+                await writeResourcesToFs();
+                loadStatus.textContent = "Restoring saved data…", await ensureSaveFsReady(), document.body.classList.remove("upload-mode"), document.body.classList.add("game-mode"), document.getElementById("upload-screen").style.display = "none", document.getElementById("canvas-container").style.display = "flex", resizeCanvas(), loadStatus.style.display = "none", gameStarted = !0, lastSaveSyncAt = Date.now(), startSaveAutosync(), Module.callMain([]), fileInput.value = "", resourceZipInput.value = ""
+            }
+
+            function stopGameRuntime() {
+                gameStarted = !1, needsRuntimeReload = !0, null !== saveSyncIntervalId && (clearInterval(saveSyncIntervalId), saveSyncIntervalId = null);
+                if (window.MainLoop && "function" == typeof window.MainLoop.pause) try {
+                    window.MainLoop.pause()
+                } catch (e) {
+                    console.warn("Failed to pause main loop:", e)
+                }
+            }
+
             async function startGame() {
                 dropZone.classList.remove("ready"), dropZone.classList.add("loading"), dropZone.style.pointerEvents = "none", loadStatus.style.display = "block", loadStatus.classList.remove("has-error");
                 try {
-                    loadStatus.textContent = "Preparing WebAssembly runtime…", await window.moduleReadyPromise;
-                    const e = Array.from(collectedFiles.entries());
-                    let t = 0;
-                    const n = e.reduce((e, [, t]) => e + t.size, 0);
-                    for (let a = 0; a < e.length; a++) {
-                        const [o, s] = e[a];
-                        loadStatus.textContent = "Writing resources… " + (a + 1) + "/" + e.length + ", " + (t / 1048576).toFixed(1) + "/" + (n / 1048576).toFixed(1) + " MiB";
-                        const r = new Uint8Array(await s.arrayBuffer()),
-                            i = o.split("/");
-                        let l = "/";
-                        for (let e = 0; e < i.length - 1; e++) {
-                            l += ("/" === l ? "" : "/") + i[e];
-                            try {
-                                Module.FS.mkdir(l)
-                            } catch (e) {}
-                        }
-                        Module.FS.writeFile("/" + o, r), t += s.size, (a + 1) % 4 == 0 && await new Promise(e => setTimeout(e, 0))
-                    }
-                    loadStatus.textContent = "Restoring saved data…", await ensureSaveFsReady(), document.body.classList.remove("upload-mode"), document.body.classList.add("game-mode"), document.getElementById("upload-screen").style.display = "none", document.getElementById("canvas-container").style.display = "flex", resizeCanvas(), window.addEventListener("resize", resizeCanvas), loadStatus.style.display = "none", gameStarted = !0, lastSaveSyncAt = Date.now(), startSaveAutosync(), Module.callMain([]), collectedFiles.clear(), fileInput.value = "", resourceZipInput.value = ""
+                    loadStatus.textContent = "Preparing WebAssembly runtime…", await launchGame()
                 } catch (e) {
                     console.error("Failed to start game:", e), loadStatus.textContent = "Error: " + (e.message || e), loadStatus.classList.add("has-error"), document.getElementById("canvas-container").style.display = "none", document.getElementById("upload-screen").style.display = "", document.body.classList.remove("game-mode"), document.body.classList.add("upload-mode"), dropZone.classList.remove("loading"), dropZone.classList.add("ready"), dropZone.style.pointerEvents = ""
                 }
@@ -1442,7 +1522,12 @@
                     await syncSaves();
                     recordImport("Cloud save (" + save.name + ")", !0, "Imported " + files.length + " files");
                     setCloudSaveStatus("Cloud save imported. Restarting game…", !1);
-                    if (gameStarted && typeof window.onGameExit === "function") window.onGameExit()
+                    if (gameStarted) {
+                        closeCloudSaveDialog();
+                        stopGameRuntime();
+                        await syncSaves();
+                        await startGame()
+                    }
                 } catch (error) {
                     setCloudSaveStatus(error.message || String(error), !0)
                 }
@@ -1650,7 +1735,7 @@
                 setCanvasZoom((viewMode === "fit" ? fitCanvasScale() : viewScale) - .1)
             }), document.getElementById("zoom-in").addEventListener("click", () => {
                 setCanvasZoom((viewMode === "fit" ? fitCanvasScale() : viewScale) + .1)
-            }), document.getElementById("zoom-fit").addEventListener("click", setCanvasFit), document.getElementById("zoom-fullscreen").addEventListener("click", toggleCanvasFullscreen), document.getElementById("cloud-save-refresh").addEventListener("click", refreshCloudSaveList), window.addEventListener("fullscreenchange", resizeCanvas), document.getElementById("save-export-btn").addEventListener("click", exportSaves), uploadSaveImportBtn.addEventListener("click", () => {
+            }), document.getElementById("zoom-fit").addEventListener("click", setCanvasFit), document.getElementById("zoom-fullscreen").addEventListener("click", toggleCanvasFullscreen), document.getElementById("cloud-save-refresh").addEventListener("click", refreshCloudSaveList), window.addEventListener("resize", resizeCanvas), window.addEventListener("fullscreenchange", resizeCanvas), document.getElementById("save-export-btn").addEventListener("click", exportSaves), uploadSaveImportBtn.addEventListener("click", () => {
                 uploadSaveImportInput.click()
             }), uploadSaveImportInput.addEventListener("change", e => {
                 const t = e.target.files[0];
@@ -1669,7 +1754,7 @@
             }), window.addEventListener("beforeunload", e => {
                 gameStarted && (syncSaves(), Date.now() - lastSaveSyncAt >= 7e3 && (e.preventDefault(), e.returnValue = "Recent save data may still be syncing. Wait a moment or export saves before leaving."))
             }), window.onGameExit = function() {
-                gameStarted = !1, null !== saveSyncIntervalId && (clearInterval(saveSyncIntervalId), saveSyncIntervalId = null), document.fullscreenElement && document.exitFullscreen().catch(function() {}), document.getElementById("canvas-container").style.display = "none", document.getElementById("upload-screen").style.display = "", document.body.classList.remove("game-mode"), document.body.classList.add("upload-mode"), window.removeEventListener("resize", resizeCanvas), dropZone.classList.remove("loading"), dropZone.style.pointerEvents = "", loadStatus.style.display = "none", collectedFiles.clear(), fileInput.value = "", resourceZipInput.value = "", refreshUI(), runtimeReloadScheduled || (runtimeReloadScheduled = !0, loadStatus.textContent = "Resetting WebAssembly runtime…", loadStatus.classList.remove("has-error"), loadStatus.style.display = "block", window.setTimeout(() => window.location.reload(), 0))
+                stopGameRuntime(), document.fullscreenElement && document.exitFullscreen().catch(function() {}), document.getElementById("canvas-container").style.display = "none", document.getElementById("upload-screen").style.display = "", document.body.classList.remove("game-mode"), document.body.classList.add("upload-mode"), dropZone.classList.remove("loading"), dropZone.style.pointerEvents = "", loadStatus.style.display = "none", loadStatus.classList.remove("has-error"), refreshUI()
             }
         </script>
     </body>

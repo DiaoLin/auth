@@ -340,6 +340,9 @@
     let viewMode = "fit";
     let viewScale = 1;
     let resizeFrame = 0;
+    let resourcesInstalled = false;
+    let gameRunning = false;
+    let needsRuntimeReload = false;
     let saveFsReadyPromise = null;
     let saveBackend = "";
     let saveSyncInFlight = null;
@@ -704,6 +707,15 @@
       }
     }
 
+    function stopGameRuntime() {
+      gameRunning = false;
+      needsRuntimeReload = true;
+      stopSaveAutosync();
+      if (window.MainLoop && typeof window.MainLoop.pause === "function") {
+        try { window.MainLoop.pause(); } catch (error) { console.warn("暂停主循环失败：", error); }
+      }
+    }
+
     function syncSavesBeforeLeaving() {
       if (saveFsReadyPromise) {
         syncSaves().catch((error) => console.error("离开页面前保存失败：", error));
@@ -711,7 +723,7 @@
     }
 
     async function handleGameExit() {
-      stopSaveAutosync();
+      stopGameRuntime();
       try {
         await syncSaves();
       } catch (error) {
@@ -729,7 +741,7 @@
     }
 
     async function restartGameAfterImport() {
-      stopSaveAutosync();
+      stopGameRuntime();
       try {
         await syncSaves();
       } catch (error) {
@@ -738,8 +750,11 @@
       if (document.fullscreenElement || document.webkitFullscreenElement) {
         (document.exitFullscreen || document.webkitExitFullscreen).call(document).catch(() => {});
       }
-      sessionStorage.setItem("pvz-auto-start", "1");
-      window.location.reload();
+      cloudSaveOverlay.hidden = true;
+      gameLoading.hidden = false;
+      gameLoadingStatus.textContent = "正在重启游戏…";
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await launchGame("正在重启游戏…");
     }
 
     function setCloudSaveStatus(message, isError = false) {
@@ -912,8 +927,12 @@
                 setCloudSaveStatus("正在导入云存档…");
                 const imported = await importCloudSave(save);
                 if (!imported) return;
-                setCloudSaveStatus("云存档已导入，正在重启游戏…");
-                await restartGameAfterImport();
+                if (gameRunning) {
+                  setCloudSaveStatus("云存档已导入，正在重启游戏…");
+                  await restartGameAfterImport();
+                } else {
+                  setCloudSaveStatus("云存档已导入到本地，点击“开始游戏”即可载入。");
+                }
               } catch (error) {
                 setCloudSaveStatus(error.message || "云存档导入失败。", true);
               }
@@ -936,42 +955,113 @@
       refreshCloudSaveList();
     }
 
+    async function prepareResources() {
+      if (resourcesInstalled) return;
+      await downloadResources();
+    }
+
+    async function writeResourcesToFs() {
+      if (resourcesInstalled) return;
+      const entries = Array.from(resourceFiles.entries());
+      const total = entries.reduce((sum, [, contents]) => sum + contents.byteLength, 0);
+      let written = 0;
+      setProgress(0, Math.max(total, 1));
+      for (let index = 0; index < entries.length; index++) {
+        const [path, contents] = entries[index];
+        const fullPath = "/" + path;
+        const directory = fullPath.slice(0, fullPath.lastIndexOf("/"));
+        if (directory) Module.FS.mkdirTree(directory);
+        Module.FS.writeFile(fullPath, contents);
+        written += contents.byteLength;
+        setProgress(written, Math.max(total, 1));
+        gameLoadingStatus.textContent = "正在载入游戏资源… " +
+          (index + 1) + " / " + entries.length;
+        if ((index + 1) % 4 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      resourcesInstalled = true;
+    }
+
+    function setupModuleGlobals() {
+      window.moduleReadyPromise = new Promise((resolve, reject) => {
+        window._resolveModuleReady = resolve;
+        window._rejectModuleReady = reject;
+      });
+      window.Module = {
+        canvas: canvasEl,
+        noInitialRun: true,
+        onRuntimeInitialized: () => window._resolveModuleReady(),
+        onAbort: (message) => window._rejectModuleReady(new Error(message)),
+        print: (message) => console.log(message),
+        printErr: (message) => console.warn(message),
+      };
+      Module.canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+    }
+
+    async function reloadWasmRuntime() {
+      try {
+        const oldSDL2 = window.Module && window.Module.SDL2;
+        if (oldSDL2 && oldSDL2.audio) {
+          if (oldSDL2.audio.silenceTimer !== undefined) clearInterval(oldSDL2.audio.silenceTimer);
+          if (oldSDL2.audio.scriptProcessorNode) {
+            oldSDL2.audio.scriptProcessorNode.onaudioprocess = function () {};
+            oldSDL2.audio.scriptProcessorNode.disconnect();
+          }
+        }
+        if (oldSDL2 && oldSDL2.capture) {
+          if (oldSDL2.capture.silenceTimer !== undefined) clearInterval(oldSDL2.capture.silenceTimer);
+          if (oldSDL2.capture.scriptProcessorNode) {
+            oldSDL2.capture.scriptProcessorNode.onaudioprocess = function () {};
+            oldSDL2.capture.scriptProcessorNode.disconnect();
+          }
+        }
+        if (oldSDL2 && oldSDL2.audioContext && typeof oldSDL2.audioContext.close === "function") {
+          oldSDL2.audioContext.close();
+        }
+        if (window.Module && window.Module.ctx && typeof window.Module.ctx.close === "function") {
+          window.Module.ctx.close();
+        }
+      } catch (error) {
+        console.warn("关闭旧音频上下文失败：", error);
+      }
+      setupModuleGlobals();
+      // 重新执行 Emscripten glue，而不是重新加载页面；资源文件仍留在内存中。
+      // 包在函数作用域里可以避免与原脚本的顶层 class/var 重复声明冲突。
+      const response = await fetch("pvz-portable.js", { cache: "force-cache" });
+      if (!response.ok) throw new Error("重新加载游戏运行时失败。");
+      const source = await response.text();
+      new Function("Module", source + "\n//# sourceURL=pvz-portable.js")(window.Module);
+      await window.moduleReadyPromise;
+      saveFsReadyPromise = null;
+      resourcesInstalled = false;
+      needsRuntimeReload = false;
+    }
+
+    async function launchGame(statusText) {
+      if (needsRuntimeReload) await reloadWasmRuntime();
+      startScreen.style.display = "none";
+      canvasContainer.style.display = "flex";
+      applyCanvasScale();
+      gameLoading.hidden = false;
+      gameLoadingStatus.textContent = statusText || "正在加载游戏…";
+      await window.moduleReadyPromise;
+      await writeResourcesToFs();
+      gameLoadingStatus.textContent = "正在读取本机存档…";
+      await ensureSaveFsReady();
+      await syncSaves();
+      startSaveAutosync();
+      gameLoading.hidden = true;
+      Module.callMain([]);
+      gameRunning = true;
+    }
+
     async function startGame() {
       startButton.disabled = true;
       resourceUrl.disabled = true;
       loadingStatus.textContent = "";
       downloadProgress.hidden = true;
       try {
-        await downloadResources();
-        startScreen.style.display = "none";
-        canvasContainer.style.display = "flex";
-        applyCanvasScale();
-        gameLoading.hidden = false;
-        gameLoadingStatus.textContent = "正在加载游戏…";
-        await window.moduleReadyPromise;
-        const entries = Array.from(resourceFiles.entries());
-        const total = entries.reduce((sum, [, contents]) => sum + contents.byteLength, 0);
-        let written = 0;
-        setProgress(0, Math.max(total, 1));
-        for (let index = 0; index < entries.length; index++) {
-          const [path, contents] = entries[index];
-          const fullPath = "/" + path;
-          const directory = fullPath.slice(0, fullPath.lastIndexOf("/"));
-          if (directory) Module.FS.mkdirTree(directory);
-          Module.FS.writeFile(fullPath, contents);
-          written += contents.byteLength;
-          setProgress(written, Math.max(total, 1));
-          gameLoadingStatus.textContent = "正在载入游戏资源… " +
-            (index + 1) + " / " + entries.length;
-          if ((index + 1) % 4 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
-        }
-        gameLoadingStatus.textContent = "正在读取本机存档…";
-        await ensureSaveFsReady();
-        await syncSaves();
-        startSaveAutosync();
-        gameLoading.hidden = true;
-        Module.callMain([]);
-        resourceFiles.clear();
+        await prepareResources();
+        await launchGame("正在加载游戏…");
       } catch (error) {
         canvasContainer.style.display = "none";
         gameLoading.hidden = false;
@@ -979,7 +1069,7 @@
         loadingStatus.textContent = error.message || "游戏启动失败，请检查资源地址后重试。";
         startButton.disabled = false;
         resourceUrl.disabled = false;
-        resourceFiles.clear();
+        gameRunning = false;
       }
     }
 
@@ -1036,11 +1126,6 @@
       if (document.visibilityState === "hidden") syncSavesBeforeLeaving();
     });
     window.addEventListener("pagehide", syncSavesBeforeLeaving);
-
-    if (sessionStorage.getItem("pvz-auto-start") === "1") {
-      sessionStorage.removeItem("pvz-auto-start");
-      setTimeout(() => startGame(), 0);
-    }
   </script>
 </body>
 </html>
