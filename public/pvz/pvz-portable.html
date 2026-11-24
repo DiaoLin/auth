@@ -289,19 +289,31 @@
                 cursor: default
             }
 
+            #cloud-save-overlay,
+            #app-modal-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 1000;
+                display: grid;
+                place-items: center;
+                padding: 16px;
+                background: rgba(0, 0, 0, .75)
+            }
+
+            #cloud-save-overlay[hidden],
+            #app-modal-overlay[hidden] {
+                display: none
+            }
+
             #cloud-save-dialog {
                 width: min(540px, calc(100vw - 32px));
                 max-height: min(80vh, 680px);
-                margin: auto;
+                overflow: auto;
                 padding: 1.25em;
                 color: #eee;
                 background: #1a1a2e;
                 border: 1px solid #4ecca3;
                 border-radius: 12px
-            }
-
-            #cloud-save-dialog::backdrop {
-                background: rgba(0, 0, 0, .75)
             }
 
             #cloud-save-dialog h2 {
@@ -364,6 +376,70 @@
             }
 
             #cloud-save-dialog button:disabled {
+                opacity: .5;
+                cursor: default
+            }
+
+            #app-modal {
+                width: min(460px, calc(100vw - 32px));
+                max-height: 80vh;
+                overflow: auto;
+                padding: 1.25em;
+                color: #eee;
+                background: #1a1a2e;
+                border: 1px solid #4ecca3;
+                border-radius: 12px
+            }
+
+            #app-modal h2 {
+                margin-bottom: .75em;
+                color: #4ecca3
+            }
+
+            #app-modal-message {
+                color: #bbb;
+                white-space: pre-line;
+                overflow-wrap: anywhere
+            }
+
+            #app-modal-input {
+                display: block;
+                width: 100%;
+                margin-top: .9em;
+                padding: .7em .8em;
+                border: 1px solid rgba(78, 204, 163, .55);
+                border-radius: 8px;
+                color: #eee;
+                background: rgba(26, 26, 46, .8);
+                font: inherit
+            }
+
+            #app-modal-input[hidden] {
+                display: none
+            }
+
+            #app-modal-actions {
+                display: flex;
+                justify-content: flex-end;
+                gap: .5em;
+                margin-top: 1em
+            }
+
+            #app-modal-actions button {
+                padding: .5em .9em;
+                color: #4ecca3;
+                background: #2b2b40;
+                border: 1px solid #4ecca3;
+                border-radius: 6px;
+                cursor: pointer
+            }
+
+            #app-modal-actions #app-modal-confirm {
+                color: #10251f;
+                background: #4ecca3
+            }
+
+            #app-modal-actions button:disabled {
                 opacity: .5;
                 cursor: default
             }
@@ -653,14 +729,27 @@
         <div id=canvas-container>
             <div id=save-toolbar><button id=save-export-btn title="Export saves as ZIP">💾 Export Saves</button><button class=cloud-save-open-btn type=button>☁️ Cloud Saves</button></div><canvas height=600 id=canvas tabindex=0 width=800></canvas>
         </div><textarea autocapitalize=off autocomplete=off autocorrect=off enterkeyhint=done id=pvz-soft-keyboard spellcheck=false></textarea>
-        <dialog id=cloud-save-dialog aria-labelledby=cloud-save-title>
-            <h2 id=cloud-save-title>Cloud Saves</h2>
-            <p>Two slots per device. Each save is limited to 10 MiB.</p>
-            <p id=cloud-save-status aria-live=polite></p>
-            <p id=cloud-save-login hidden><a href=/check.html>Sign in with your device</a> to use cloud saves.</p>
-            <div id=cloud-save-list></div>
-            <div id=cloud-save-dialog-actions><button id=cloud-save-refresh type=button>Refresh</button><button id=cloud-save-close type=button>Close</button></div>
-        </dialog>
+        <div id=cloud-save-overlay hidden>
+            <section id=cloud-save-dialog role=dialog aria-modal=true aria-labelledby=cloud-save-title tabindex=-1>
+                <h2 id=cloud-save-title>Cloud Saves</h2>
+                <p>Two slots per device. Each save is limited to 10 MiB.</p>
+                <p id=cloud-save-status aria-live=polite></p>
+                <p id=cloud-save-login hidden><a href=/check.html>Sign in with your device</a> to use cloud saves.</p>
+                <div id=cloud-save-list></div>
+                <div id=cloud-save-dialog-actions><button id=cloud-save-refresh type=button>Refresh</button><button id=cloud-save-close type=button>Close</button></div>
+            </section>
+        </div>
+        <div id=app-modal-overlay hidden>
+            <section id=app-modal role=dialog aria-modal=true aria-labelledby=app-modal-title aria-describedby=app-modal-message tabindex=-1>
+                <h2 id=app-modal-title></h2>
+                <p id=app-modal-message></p>
+                <input id=app-modal-input type=text maxlength=40 hidden>
+                <div id=app-modal-actions>
+                    <button id=app-modal-cancel type=button>Cancel</button>
+                    <button id=app-modal-confirm type=button>OK</button>
+                </div>
+            </section>
+        </div>
         <script>
             window.moduleReadyPromise = new Promise(function(n, e) {
                 window._resolveModuleReady = n, window._rejectModuleReady = e
@@ -712,15 +801,67 @@
                 uploadSaveClearBtn = document.getElementById("upload-save-clear-btn"),
                 uploadSaveImportInput = document.getElementById("upload-save-import-input"),
                 uploadSaveImportDirInput = document.getElementById("upload-save-import-dir-input"),
+                cloudSaveOverlay = document.getElementById("cloud-save-overlay"),
                 cloudSaveDialog = document.getElementById("cloud-save-dialog"),
                 cloudSaveList = document.getElementById("cloud-save-list"),
                 cloudSaveStatus = document.getElementById("cloud-save-status"),
                 cloudSaveLogin = document.getElementById("cloud-save-login"),
+                appModalOverlay = document.getElementById("app-modal-overlay"),
+                appModalTitle = document.getElementById("app-modal-title"),
+                appModalMessage = document.getElementById("app-modal-message"),
+                appModalInput = document.getElementById("app-modal-input"),
+                appModalCancel = document.getElementById("app-modal-cancel"),
+                appModalConfirm = document.getElementById("app-modal-confirm"),
                 reselectLink = document.getElementById("reselect-link"),
                 importLogList = document.getElementById("import-log"),
                 importLogEmpty = document.getElementById("import-log-empty"),
                 clearImportLogBtn = document.getElementById("clear-import-log-btn");
             let runtimeReloadScheduled = !1;
+            let appModalResolve = null,
+                appModalQueue = Promise.resolve(),
+                appModalHasInput = false,
+                appModalIsConfirm = false;
+
+            function showAppModal(options) {
+                const result = appModalQueue.then(() => new Promise(resolve => {
+                    appModalTitle.textContent = options.title;
+                    appModalMessage.textContent = options.message;
+                    appModalHasInput = Object.prototype.hasOwnProperty.call(options, "inputValue");
+                    appModalIsConfirm = !!options.confirm;
+                    appModalInput.hidden = !appModalHasInput;
+                    appModalInput.value = appModalHasInput ? options.inputValue : "";
+                    appModalCancel.hidden = !appModalHasInput && !appModalIsConfirm;
+                    appModalConfirm.textContent = options.confirm ? "Continue" : "OK";
+                    appModalOverlay.hidden = false;
+                    appModalResolve = resolve;
+                    (appModalHasInput ? appModalInput : appModalConfirm).focus()
+                }));
+                appModalQueue = result.then(() => undefined, () => undefined);
+                return result
+            }
+
+            function finishAppModal(accepted) {
+                if (!appModalResolve) return;
+                const result = accepted
+                    ? appModalHasInput ? appModalInput.value : appModalIsConfirm ? true : undefined
+                    : appModalHasInput ? null : false;
+                const resolve = appModalResolve;
+                appModalResolve = null;
+                appModalOverlay.hidden = true;
+                resolve(result)
+            }
+
+            function showMessage(message) {
+                return showAppModal({ title: "Notice", message: message })
+            }
+
+            function showConfirmation(message) {
+                return showAppModal({ title: "Confirm", message: message, confirm: true })
+            }
+
+            function askForText(message, value) {
+                return showAppModal({ title: "Cloud save name", message: message, inputValue: value })
+            }
 
             function recordImport(source, success, details) {
                 const item = document.createElement("li"),
@@ -805,7 +946,7 @@
                 } catch (e) {
                     console.error("Resource ZIP import failed:", e);
                     const message = e && e.message || String(e);
-                    recordImport(label, !1, (count ? "Failed after importing " + count + " files: " : "") + message), alert("Resource ZIP import failed: " + message)
+                    recordImport(label, !1, (count ? "Failed after importing " + count + " files: " : "") + message), await showMessage("Resource ZIP import failed: " + message)
                 } finally {
                     t.disabled = !1, t.innerHTML = n
                 }
@@ -834,7 +975,8 @@
                     logUrlImportStep(msg, !0);
                     r.textContent = "❌ " + msg;
                     recordImport("Resource URL", !1, msg);
-                    return void alert(msg)
+                    await showMessage(msg);
+                    return
                 }
                 let u;
                 if (/^https?:\/\//i.test(n)) u = n;
@@ -845,7 +987,7 @@
                         logUrlImportStep(msg, !0);
                         r.textContent = "❌ " + msg;
                         recordImport("Resource URL", !1, msg);
-                        alert(msg);
+                        await showMessage(msg);
                         return;
                     }
                     u = location.origin + n;
@@ -855,7 +997,7 @@
                         logUrlImportStep(msg, !0);
                         r.textContent = "❌ " + msg;
                         recordImport("Resource URL", !1, msg);
-                        alert(msg);
+                        await showMessage(msg);
                         return;
                     }
                     try {
@@ -865,7 +1007,7 @@
                         logUrlImportStep("资源地址无效：" + msg, !0);
                         r.textContent = "❌ 资源地址无效：" + msg;
                         recordImport("Resource URL", !1, msg);
-                        alert("资源地址无效：" + msg);
+                        await showMessage("资源地址无效：" + msg);
                         return
                     }
                 }
@@ -936,7 +1078,7 @@
                     logUrlImportStep("导入失败：" + msg, !0);
                     recordImport("Resource URL", !1, msg);
                     r.textContent = "❌ " + msg;
-                    alert("导入资源失败：" + msg + "\n\n若是跨域(CORS)限制，说明该服务器不允许浏览器直接下载；若是绝对路径，请确认该 ZIP 已放在站点根目录并可直接访问。\n可改用：先把 ZIP 存到本地，再用「Import Resource ZIP」导入。")
+                    await showMessage("导入资源失败：" + msg + "\n\n若是跨域(CORS)限制，说明该服务器不允许浏览器直接下载；若是绝对路径，请确认该 ZIP 已放在站点根目录并可直接访问。\n可改用：先把 ZIP 存到本地，再用「Import Resource ZIP」导入。")
                 } finally {
                     t.disabled = !1;
                     t.innerHTML = i
@@ -1063,7 +1205,10 @@
                 try {
                     await ensureSaveFsReady(), await syncSaves();
                     const e = collectSaveFiles("/saves/userdata");
-                    if (0 === e.length) return void alert("No save data found.");
+                    if (0 === e.length) {
+                        await showMessage("No save data found.");
+                        return
+                    }
                     const t = new JSZip;
                     for (const n of e) t.file(n.replace(/^\/saves\//, ""), Module.FS.readFile(n));
                     const n = await t.generateAsync({
@@ -1072,7 +1217,7 @@
                         a = document.createElement("a");
                     a.href = URL.createObjectURL(n), a.download = "pvz-portable-savedata.zip", a.click(), URL.revokeObjectURL(a.href)
                 } catch (e) {
-                    console.error("Export failed:", e), alert("Export failed: " + e.message)
+                    console.error("Export failed:", e), await showMessage("Export failed: " + e.message)
                 } finally {
                     e.disabled = !1, e.textContent = "💾 Export Saves"
                 }
@@ -1105,6 +1250,9 @@
             function setCloudSaveStatus(message, isError) {
                 cloudSaveStatus.textContent = message;
                 cloudSaveStatus.classList.toggle("error", !!isError)
+            }
+            function closeCloudSaveDialog() {
+                cloudSaveOverlay.hidden = true
             }
             async function refreshCloudSaveList() {
                 cloudSaveList.replaceChildren();
@@ -1155,9 +1303,9 @@
             }
             async function uploadCloudSave(save) {
                 const defaultName = save.name || "PVZ Save " + new Date().toLocaleDateString();
-                const name = prompt("Name this cloud save (up to 40 characters):", defaultName);
+                const name = await askForText("Name this cloud save (up to 40 characters):", defaultName);
                 if (name === null) return;
-                if (save.name && !confirm("Replace cloud save “" + save.name + "”?")) return;
+                if (save.name && !await showConfirmation("Replace cloud save “" + save.name + "”?")) return;
                 try {
                     setCloudSaveStatus("Preparing save…", !1);
                     await ensureSaveFsReady();
@@ -1212,7 +1360,7 @@
                     }
                     await ensureSaveFsReady();
                     const current = collectSaveFiles("/saves/userdata");
-                    if (current.length && !confirm("This will replace " + current.length + " local save files. Continue?")) return;
+                    if (current.length && !await showConfirmation("This will replace " + current.length + " local save files. Continue?")) return;
                     for (const file of current) Module.FS.unlink(file);
                     function removeSaveDirectories(directory) {
                         let entries;
@@ -1254,7 +1402,7 @@
                 }
             }
             async function renameCloudSave(save) {
-                const name = prompt("New name (up to 40 characters):", save.name);
+                const name = await askForText("New name (up to 40 characters):", save.name);
                 if (name === null) return;
                 try {
                     await cloudSaveApi("/" + save.slot, {
@@ -1272,7 +1420,7 @@
                 }
             }
             async function deleteCloudSave(save) {
-                if (!confirm("Delete cloud save “" + save.name + "”?")) return;
+                if (!await showConfirmation("Delete cloud save “" + save.name + "”?")) return;
                 try {
                     await cloudSaveApi("/" + save.slot, {
                         method: "DELETE"
@@ -1312,7 +1460,7 @@
                 } catch (e) {
                     console.error("Import failed:", e);
                     const message = e && e.message || String(e);
-                    recordImport(label, !1, (count ? "Failed after importing " + count + " files: " : "") + message), alert("Import failed: " + message)
+                    recordImport(label, !1, (count ? "Failed after importing " + count + " files: " : "") + message), await showMessage("Import failed: " + message)
                 } finally {
                     t.disabled = !1, t.textContent = n
                 }
@@ -1344,13 +1492,13 @@
                 } catch (e) {
                     console.error("Save folder import failed:", e);
                     const message = e && e.message || String(e);
-                    recordImport("Save folder", !1, (count ? "Failed after importing " + count + " files: " : "") + message), alert("Save folder import failed: " + message)
+                    recordImport("Save folder", !1, (count ? "Failed after importing " + count + " files: " : "") + message), await showMessage("Save folder import failed: " + message)
                 } finally {
                     t.disabled = !1, t.textContent = n
                 }
             }
             async function clearSaves(e) {
-                if (await ensureSaveFsReady(), !confirm("This will permanently delete ALL save data from your browser.\nThis cannot be undone. Continue?")) return;
+                if (await ensureSaveFsReady(), !await showConfirmation("This will permanently delete ALL save data from your browser.\nThis cannot be undone. Continue?")) return;
                 e.disabled = !0;
                 const t = e.textContent;
                 e.textContent = "⏳ Clearing…";
@@ -1379,9 +1527,9 @@
                             Module.FS.rmdir(e)
                         } catch (e) {}
                     }
-                    a("/saves"), await syncSaves(), alert("All save data has been cleared.")
+                    a("/saves"), await syncSaves(), await showMessage("All save data has been cleared.")
                 } catch (r) {
-                    console.error("Clear failed:", r), alert("Clear failed: " + r.message)
+                    console.error("Clear failed:", r), await showMessage("Clear failed: " + r.message)
                 } finally {
                     e.disabled = !1, e.textContent = t
                 }
@@ -1437,9 +1585,22 @@
                 e.stopPropagation(), collectedFiles.clear(), fileInput.value = "", resourceZipInput.value = "", refreshUI()
             }), document.querySelectorAll(".cloud-save-open-btn").forEach(button => {
                 button.addEventListener("click", () => {
-                    cloudSaveDialog.showModal(), refreshCloudSaveList()
+                    cloudSaveOverlay.hidden = false, cloudSaveDialog.focus(), refreshCloudSaveList()
                 })
-            }), document.getElementById("cloud-save-close").addEventListener("click", () => cloudSaveDialog.close()), document.getElementById("cloud-save-refresh").addEventListener("click", refreshCloudSaveList), window.addEventListener("fullscreenchange", resizeCanvas), document.getElementById("save-export-btn").addEventListener("click", exportSaves), uploadSaveImportBtn.addEventListener("click", () => {
+            }), document.getElementById("cloud-save-close").addEventListener("click", closeCloudSaveDialog), cloudSaveOverlay.addEventListener("click", event => {
+                if (event.target === cloudSaveOverlay) closeCloudSaveDialog()
+            }), appModalConfirm.addEventListener("click", () => finishAppModal(true)), appModalCancel.addEventListener("click", () => finishAppModal(false)), appModalOverlay.addEventListener("click", event => {
+                if (event.target === appModalOverlay) finishAppModal(false)
+            }), appModalInput.addEventListener("keydown", event => {
+                if ("Enter" === event.key) {
+                    event.preventDefault();
+                    finishAppModal(true)
+                }
+            }), document.addEventListener("keydown", event => {
+                if ("Escape" !== event.key) return;
+                if (!appModalOverlay.hidden) finishAppModal(false);
+                else if (!cloudSaveOverlay.hidden) closeCloudSaveDialog()
+            }), document.getElementById("cloud-save-refresh").addEventListener("click", refreshCloudSaveList), window.addEventListener("fullscreenchange", resizeCanvas), document.getElementById("save-export-btn").addEventListener("click", exportSaves), uploadSaveImportBtn.addEventListener("click", () => {
                 uploadSaveImportInput.click()
             }), uploadSaveImportInput.addEventListener("change", e => {
                 const t = e.target.files[0];

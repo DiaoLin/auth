@@ -69,19 +69,51 @@
     #game-loading[hidden] { display: none }
     #game-loading p { margin: 0; color: #eee }
     #game-loading progress { width: min(360px, 90%) }
-    dialog {
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      background: rgb(0 0 0 / 75%);
+    }
+    .modal-overlay[hidden] { display: none }
+    .modal-panel {
       width: min(460px, calc(100vw - 32px));
       max-height: 80vh;
       overflow: auto;
-      margin: auto;
       padding: 22px;
       border: 1px solid #4ecca3;
       border-radius: 12px;
       color: #eee;
       background: #1a1a2e;
     }
-    dialog::backdrop { background: rgb(0 0 0 / 75%) }
-    dialog h2 { margin: 0 0 12px; color: #4ecca3; font-size: 1.25rem }
+    .modal-panel h2 { margin: 0 0 12px; color: #4ecca3; font-size: 1.25rem }
+    .modal-panel p { white-space: pre-line; overflow-wrap: anywhere }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px }
+    .modal-actions button {
+      border: 1px solid #4ecca3;
+      border-radius: 8px;
+      padding: 9px 14px;
+      color: #4ecca3;
+      background: #2b2b40;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .modal-actions button.primary { color: #10251f; background: #4ecca3 }
+    #cloud-save-dialog {
+      width: min(460px, calc(100vw - 32px));
+      max-height: 80vh;
+      overflow: auto;
+      padding: 22px;
+      border: 1px solid #4ecca3;
+      border-radius: 12px;
+      color: #eee;
+      background: #1a1a2e;
+    }
+    #cloud-save-dialog h2 { margin: 0 0 12px; color: #4ecca3; font-size: 1.25rem }
     #cloud-save-status { min-height: 1.4em; color: #ff8b8b }
     .cloud-save-slot {
       display: flex;
@@ -125,13 +157,25 @@
     </div>
   </main>
 
-  <dialog id="cloud-save-dialog" aria-labelledby="cloud-save-title">
-    <h2 id="cloud-save-title">发现云存档</h2>
-    <p>选择一个存档导入，或直接继续游戏。</p>
-    <p id="cloud-save-status" role="status" aria-live="polite"></p>
-    <div id="cloud-save-list"></div>
-    <button id="cloud-save-continue" type="button">不导入，继续游戏</button>
-  </dialog>
+  <div id="cloud-save-overlay" class="modal-overlay" hidden>
+    <section id="cloud-save-dialog" role="dialog" aria-modal="true" aria-labelledby="cloud-save-title" tabindex="-1">
+      <h2 id="cloud-save-title">发现云存档</h2>
+      <p>选择一个存档导入，或直接继续游戏。</p>
+      <p id="cloud-save-status" role="status" aria-live="polite"></p>
+      <div id="cloud-save-list"></div>
+      <button id="cloud-save-continue" type="button">不导入，继续游戏</button>
+    </section>
+  </div>
+  <div id="app-modal-overlay" class="modal-overlay" hidden>
+    <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="app-modal-title" aria-describedby="app-modal-message" tabindex="-1">
+      <h2 id="app-modal-title">确认操作</h2>
+      <p id="app-modal-message"></p>
+      <div class="modal-actions">
+        <button id="app-modal-cancel" type="button">取消</button>
+        <button id="app-modal-confirm" class="primary" type="button">继续</button>
+      </div>
+    </section>
+  </div>
 
   <textarea id="pvz-soft-keyboard" autocapitalize="off" autocomplete="off" autocorrect="off" enterkeyhint="done" spellcheck="false" style="position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;opacity:0;resize:none;pointer-events:none;font-size:16px"></textarea>
 
@@ -163,13 +207,41 @@
     const gameLoadingStatus = document.getElementById("game-loading-status");
     const gameProgress = document.getElementById("game-progress");
     const cloudSaveDialog = document.getElementById("cloud-save-dialog");
+    const cloudSaveOverlay = document.getElementById("cloud-save-overlay");
     const cloudSaveList = document.getElementById("cloud-save-list");
     const cloudSaveStatus = document.getElementById("cloud-save-status");
     const cloudSaveContinue = document.getElementById("cloud-save-continue");
+    const appModalOverlay = document.getElementById("app-modal-overlay");
+    const appModalTitle = document.getElementById("app-modal-title");
+    const appModalMessage = document.getElementById("app-modal-message");
+    const appModalCancel = document.getElementById("app-modal-cancel");
+    const appModalConfirm = document.getElementById("app-modal-confirm");
     const resourceFiles = new Map();
     let cloudSaveImporting = false;
     let cloudSaveWarning = "";
     let saveFsReadyPromise = null;
+    let cloudSaveDialogResolve = null;
+    let appModalResolve = null;
+
+    function showConfirmModal(message) {
+      appModalTitle.textContent = "确认操作";
+      appModalMessage.textContent = message;
+      appModalCancel.hidden = false;
+      appModalConfirm.textContent = "继续";
+      appModalOverlay.hidden = false;
+      appModalConfirm.focus();
+      return new Promise((resolve) => {
+        appModalResolve = resolve;
+      });
+    }
+
+    function finishAppModal(result) {
+      if (!appModalResolve) return;
+      const resolve = appModalResolve;
+      appModalResolve = null;
+      appModalOverlay.hidden = true;
+      resolve(result);
+    }
 
     function setProgress(value, max) {
       for (const progress of [downloadProgress, gameProgress]) {
@@ -337,7 +409,7 @@
       await ensureSaveFsReady();
       const currentFiles = collectSaveFiles("/saves/userdata");
       if (currentFiles.length &&
-          !confirm("导入云存档将替换本机存档，是否继续？")) return false;
+          !await showConfirmModal("导入云存档将替换本机存档，是否继续？")) return false;
       for (const path of currentFiles) Module.FS.unlink(path);
       function removeDirectories(directory) {
         if (!Module.FS.analyzePath(directory).exists) return;
@@ -388,7 +460,7 @@
           cloudSaveStatus.textContent = "正在导入云存档…";
           try {
             const imported = await importCloudSave(save);
-            if (imported) cloudSaveDialog.close();
+            if (imported) closeCloudSaveDialog(true);
             else {
               cloudSaveStatus.textContent = "";
               for (const button of cloudSaveList.querySelectorAll("button")) button.disabled = false;
@@ -404,10 +476,21 @@
         card.append(details, loadButton);
         cloudSaveList.appendChild(card);
       }
-      cloudSaveDialog.showModal();
+      cloudSaveOverlay.hidden = false;
+      cloudSaveDialog.focus();
       return new Promise((resolve) => {
-        cloudSaveDialog.addEventListener("close", resolve, { once: true });
+        cloudSaveDialogResolve = resolve;
       });
+    }
+
+    function closeCloudSaveDialog(force = false) {
+      if (cloudSaveImporting && !force) return;
+      cloudSaveOverlay.hidden = true;
+      if (cloudSaveDialogResolve) {
+        const resolve = cloudSaveDialogResolve;
+        cloudSaveDialogResolve = null;
+        resolve();
+      }
     }
 
     async function startGame() {
@@ -464,9 +547,19 @@
       }
     }
 
-    cloudSaveContinue.addEventListener("click", () => cloudSaveDialog.close());
-    cloudSaveDialog.addEventListener("cancel", (event) => {
-      if (cloudSaveImporting) event.preventDefault();
+    cloudSaveContinue.addEventListener("click", () => closeCloudSaveDialog());
+    cloudSaveOverlay.addEventListener("click", (event) => {
+      if (event.target === cloudSaveOverlay) closeCloudSaveDialog();
+    });
+    document.getElementById("app-modal-cancel").addEventListener("click", () => finishAppModal(false));
+    document.getElementById("app-modal-confirm").addEventListener("click", () => finishAppModal(true));
+    appModalOverlay.addEventListener("click", (event) => {
+      if (event.target === appModalOverlay) finishAppModal(false);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      if (!appModalOverlay.hidden) finishAppModal(false);
+      else if (!cloudSaveOverlay.hidden) closeCloudSaveDialog();
     });
     startButton.addEventListener("click", startGame);
     resourceUrl.addEventListener("keydown", (event) => {
