@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PVZ 存档编辑器 - PvZ-Portable</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🌻%3C/text%3E%3C/svg%3E">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #141426;
+      --panel: #1e1e34;
+      --panel-2: #24243e;
+      --line: #353553;
+      --green: #4ecca3;
+      --green-dark: #173d34;
+      --text: #eee;
+      --muted: #9b9bb4;
+      --red: #ff8b8b;
+      --yellow: #f5d76e;
+      --blue: #7cc4ff;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      color: var(--text);
+      background: radial-gradient(circle at 50% -20%, #26345a 0, var(--bg) 55%) fixed;
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+    a { color: var(--green); }
+    button, input, select, textarea { font: inherit; }
+    button, .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 9px 14px;
+      border: 1px solid var(--green);
+      border-radius: 7px;
+      color: #10251f;
+      background: var(--green);
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    button:hover, .btn:hover { filter: brightness(1.08); }
+    button:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+    button.secondary, .btn.secondary {
+      color: var(--green);
+      background: #222238;
+    }
+    button.ghost, .btn.ghost {
+      border-color: var(--line);
+      color: var(--muted);
+      background: transparent;
+    }
+    button.danger {
+      border-color: #633636;
+      color: var(--red);
+      background: #2a1c22;
+    }
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      max-width: 1500px;
+      margin: 0 auto;
+      padding: 24px 22px 12px;
+    }
+    h1 { margin: 0; color: var(--green); font-size: clamp(1.45rem, 3vw, 2.1rem); }
+    h1 small { display: block; margin-top: 4px; color: var(--text); font-size: .55em; font-weight: 500; }
+    .subtitle { max-width: 880px; margin: 8px 0 0; color: var(--muted); }
+    .layout {
+      display: grid;
+      grid-template-columns: 310px minmax(0, 1fr);
+      gap: 18px;
+      max-width: 1500px;
+      margin: 0 auto;
+      padding: 0 22px 34px;
+      align-items: start;
+    }
+    .sidebar { display: grid; gap: 14px; position: sticky; top: 14px; }
+    .card, .main-panel {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(30, 30, 52, .94);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .18);
+    }
+    .card { padding: 14px; }
+    .card h2 { margin: 0 0 10px; font-size: 1rem; color: var(--green); }
+    .muted { color: var(--muted); }
+    .hint { margin: 8px 0 0; color: var(--muted); font-size: .85rem; }
+    .drop-zone {
+      display: grid;
+      place-items: center;
+      min-height: 104px;
+      padding: 14px;
+      border: 1.5px dashed #4ecca366;
+      border-radius: 10px;
+      color: var(--muted);
+      background: #17172b;
+      text-align: center;
+      cursor: pointer;
+      transition: .18s;
+    }
+    .drop-zone strong { display: block; color: var(--text); margin-bottom: 2px; }
+    .drop-zone.over { border-color: var(--green); background: #1c2a2a; }
+    .file-list { display: grid; gap: 7px; max-height: 45vh; overflow: auto; }
+    .file-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 6px;
+      align-items: center;
+      padding: 8px 9px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: #24243c;
+      cursor: pointer;
+    }
+    .file-item:hover { border-color: #4ecca366; }
+    .file-item.active { border-color: var(--green); background: #1d332f; }
+    .file-item .name { overflow: hidden; color: var(--text); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+    .file-item .path { overflow: hidden; color: var(--muted); font-size: .75rem; text-overflow: ellipsis; white-space: nowrap; }
+    .file-item .badge { justify-self: end; }
+    .file-item .x { padding: 2px 6px; border: none; color: var(--muted); background: transparent; font-weight: 400; }
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 999px;
+      color: var(--green);
+      background: var(--green-dark);
+      font-size: .72rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .badge.warn { color: var(--yellow); background: #3a321b; }
+    .badge.error { color: var(--red); background: #3a2025; }
+    .badge.info { color: var(--blue); background: #1b2b3b; }
+    .sidebar input[type="text"], .sidebar select {
+      width: 100%;
+      min-width: 0;
+      padding: 7px 9px;
+      border: 1px solid #3b3b5c;
+      border-radius: 6px;
+      color: var(--text);
+      background: #151526;
+      outline: none;
+    }
+    .sidebar input[type="text"]:focus, .sidebar select:focus { border-color: var(--green); }
+    .cloud-slot {
+      display: grid;
+      gap: 4px;
+      padding: 9px 10px;
+      border: 1px solid #30304d;
+      border-radius: 8px;
+      background: #24243c;
+    }
+    .cloud-slot .title { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; }
+    .cloud-slot .meta { color: var(--muted); font-size: .78rem; }
+    .cloud-slot .actions { margin-top: 2px; }
+    .cloud-slot .actions button { padding: 5px 8px; font-size: .76rem; }
+    .warning { border-color: #5d4a2a; background: #241f16; }
+    .warning h2 { color: var(--yellow); }
+    .main-panel { min-height: 70vh; overflow: hidden; }
+    .empty {
+      display: grid;
+      place-items: center;
+      min-height: 70vh;
+      padding: 40px 24px;
+      color: var(--muted);
+      text-align: center;
+    }
+    .empty .big { margin-bottom: 10px; font-size: 3rem; }
+    .editor { display: none; }
+    .editor.visible { display: block; }
+    .editor-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #22223c, #1e1e34);
+    }
+    .editor-head h2 { margin: 0; overflow-wrap: anywhere; font-size: 1.15rem; }
+    .editor-head p { margin: 4px 0 0; color: var(--muted); font-size: .85rem; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+      gap: 8px;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--line);
+      background: #1b1b2f;
+    }
+    .meta {
+      padding: 8px 10px;
+      border: 1px solid #30304d;
+      border-radius: 8px;
+      background: #202038;
+    }
+    .meta .k { color: var(--muted); font-size: .75rem; }
+    .meta .v { overflow-wrap: anywhere; font-weight: 700; }
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #19192c;
+    }
+    .tabs button {
+      padding: 7px 11px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      color: var(--muted);
+      background: transparent;
+      font-weight: 650;
+    }
+    .tabs button:hover { color: var(--text); background: #26263f; }
+    .tabs button.active { border-color: var(--green); color: var(--green); background: #1b2e2a; }
+    .tab-content { padding: 16px 20px 24px; }
+    .section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; }
+    .section-title h3 { margin: 0; color: var(--green); font-size: 1.03rem; }
+    .section-title .sub { color: var(--muted); font-size: .82rem; }
+    .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+    .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+    .field {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+      padding: 8px 10px;
+      border: 1px solid #30304d;
+      border-radius: 8px;
+      background: #202038;
+    }
+    .field label { overflow: hidden; color: var(--muted); font-size: .76rem; text-overflow: ellipsis; white-space: nowrap; }
+    .field .key { color: #66668a; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .68rem; }
+    .field input[type="number"], .field input[type="text"], .field select {
+      width: 100%;
+      min-width: 0;
+      padding: 6px 7px;
+      border: 1px solid #3b3b5c;
+      border-radius: 6px;
+      color: var(--text);
+      background: #151526;
+      outline: none;
+    }
+    .field input:focus, .field select:focus { border-color: var(--green); }
+    .field .range { display: flex; gap: 6px; align-items: center; }
+    .field .range input { flex: 1; }
+    .field .range span { color: var(--muted); font-size: .75rem; }
+    .checks { display: flex; flex-wrap: wrap; gap: 8px; }
+    .check {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 9px;
+      border: 1px solid #30304d;
+      border-radius: 7px;
+      color: var(--text);
+      background: #202038;
+      cursor: pointer;
+    }
+    .check input { accent-color: var(--green); }
+    .quick { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+    .quick button { padding: 7px 10px; font-size: .82rem; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 7px 8px; border-bottom: 1px solid #2e2e4a; text-align: left; vertical-align: middle; }
+    th { position: sticky; top: 0; z-index: 1; color: var(--muted); background: #1b1b2f; font-size: .76rem; font-weight: 700; }
+    tbody tr:hover { background: #24243e; }
+    tbody tr.selected { background: #1d332f; }
+    td input[type="number"], td input[type="text"], td select {
+      width: 100%;
+      padding: 5px 6px;
+      border: 1px solid #3b3b5c;
+      border-radius: 5px;
+      color: var(--text);
+      background: #151526;
+    }
+    .table-wrap { max-height: 55vh; overflow: auto; border: 1px solid #30304d; border-radius: 9px; }
+    .table-wrap table { min-width: 680px; }
+    .btn-mini { padding: 4px 8px; font-size: .76rem; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .nowrap { white-space: nowrap; }
+    .tag { display: inline-block; padding: 1px 6px; border-radius: 5px; color: #b9b9d6; background: #2b2b48; font-size: .73rem; }
+    .notice { padding: 10px 12px; border: 1px solid #3b3b5c; border-radius: 8px; color: var(--muted); background: #1b1b2f; }
+    .notice.warn { border-color: #5d4a2a; color: #e6cf91; background: #241f16; }
+    .notice.error { border-color: #633636; color: var(--red); background: #2a1c22; }
+    details { margin-top: 12px; border: 1px solid #30304d; border-radius: 9px; background: #1d1d32; }
+    summary { padding: 10px 12px; color: var(--green); cursor: pointer; font-weight: 700; }
+    details > .details-body { padding: 0 12px 12px; }
+    .wave-list { display: grid; gap: 8px; max-height: 60vh; overflow: auto; }
+    .wave-row { border: 1px solid #30304d; border-radius: 8px; background: #202038; }
+    .wave-row summary { display: flex; justify-content: space-between; gap: 10px; color: var(--text); font-weight: 600; }
+    .wave-row .wave-edit { display: grid; gap: 8px; padding: 0 10px 10px; }
+    .wave-row textarea {
+      width: 100%;
+      min-height: 54px;
+      padding: 7px 8px;
+      border: 1px solid #3b3b5c;
+      border-radius: 6px;
+      color: var(--text);
+      background: #151526;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: .82rem;
+    }
+    .item-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr); gap: 14px; align-items: start; }
+    .item-detail { position: sticky; top: 14px; max-height: 72vh; overflow: auto; padding: 12px; border: 1px solid #30304d; border-radius: 9px; background: #1d1d32; }
+    .item-detail h4 { margin: 0 0 8px; color: var(--green); }
+    .item-detail .grid2 { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+    .status-bar { min-height: 24px; padding: 8px 20px 14px; color: var(--muted); font-size: .82rem; }
+    .status-bar.error { color: var(--red); }
+    .status-bar.ok { color: var(--green); }
+    #toast {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 99;
+      max-width: min(420px, calc(100vw - 36px));
+      padding: 11px 14px;
+      border: 1px solid var(--green);
+      border-radius: 9px;
+      color: #10251f;
+      background: var(--green);
+      box-shadow: 0 8px 30px #0008;
+      font-weight: 650;
+      opacity: 0;
+      transform: translateY(12px);
+      transition: .2s;
+      pointer-events: none;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.error { border-color: #ffb1b1; color: #2a0f14; background: #ff9b9b; }
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+      .item-layout { grid-template-columns: 1fr; }
+      .item-detail { position: static; max-height: none; }
+    }
+    @media (max-width: 620px) {
+      .topbar { padding: 18px 14px 8px; }
+      .layout { padding: 0 12px 24px; }
+      .editor-head, .tab-content { padding-left: 14px; padding-right: 14px; }
+      .meta-grid, .tabs { padding-left: 14px; padding-right: 14px; }
+      .actions { width: 100%; }
+      .actions button { flex: 1; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>🌻 PVZ 存档编辑器 <small>PvZ-Portable · users.dat / userN.dat / game*.v4</small></h1>
+      <p class="subtitle">
+        直接在浏览器中解析和修改 PvZ-Portable 存档。文件不会上传到服务器；所有解析和修改都在本机完成。
+      </p>
+    </div>
+    <div class="actions">
+      <a class="btn ghost" href="pvz.html">返回游戏</a>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="card">
+        <h2>打开存档</h2>
+        <div id="drop-zone" class="drop-zone" tabindex="0" role="button">
+          <div><strong>拖拽存档文件到这里</strong>users.dat · user1.dat · game1_0.v4</div>
+        </div>
+        <input id="file-input" type="file" multiple hidden accept=".dat,.v4,.bin,application/octet-stream">
+        <div class="quick">
+          <button id="pick-files" class="secondary">选择文件</button>
+          <button id="load-browser" class="secondary">读取浏览器存档</button>
+        </div>
+        <p id="browser-hint" class="hint">
+          浏览器存档来自本机 PVZ 页面写入的 IndexedDB 快照。写入前请先关闭游戏页面。
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>已打开 <span id="file-count" class="badge">0</span></h2>
+        <div id="file-list" class="file-list">
+          <p class="muted">还没有打开存档。</p>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>☁️ 云存档</h2>
+        <p id="cloud-login-hint" class="hint" hidden><a href="/check.html">先登录设备</a>后才能使用云存档。</p>
+        <div id="cloud-slot-list" class="file-list"></div>
+        <div class="quick">
+          <select id="cloud-slot-select" aria-label="云存档槽位">
+            <option value="1">槽位 1</option>
+            <option value="2">槽位 2</option>
+          </select>
+          <input id="cloud-save-name" type="text" maxlength="40" placeholder="云存档名称（最多 40 字）">
+        </div>
+        <div class="quick">
+          <button id="cloud-upload" class="secondary">上传当前文件到云存档</button>
+          <button id="cloud-refresh" class="ghost">刷新</button>
+        </div>
+        <p id="cloud-status" class="hint">云存档是整个 userdata 目录的 ZIP；载入后编辑，再上传回槽位。</p>
+      </section>
+
+      <section class="card warning">
+        <h2>⚠ 修改前请备份</h2>
+        <p class="hint" style="margin:0">
+          存档编辑器会尽量保留未知字段和原始字节，但错误的值仍可能导致游戏崩溃或进度损坏。
+          建议先复制一份原始 <span class="mono">userdata</span> 文件夹，再进行修改。
+        </p>
+      </section>
+    </aside>
+
+    <section class="main-panel">
+      <div id="empty" class="empty">
+        <div>
+          <div class="big">🧟</div>
+          <h2>打开一个存档开始编辑</h2>
+          <p>支持 <span class="mono">users.dat</span>、<span class="mono">user1.dat</span> 和 <span class="mono">game1_0.v4</span> 等文件。</p>
+          <p class="muted">也可以点击左侧“读取浏览器存档”，直接编辑本机游戏页面里的存档。</p>
+        </div>
+      </div>
+
+      <div id="editor" class="editor">
+        <div class="editor-head">
+          <div>
+            <h2 id="file-title">—</h2>
+            <p id="file-subtitle">—</p>
+          </div>
+          <div class="actions">
+            <button id="save-download">下载修改后的文件</button>
+            <button id="save-browser" class="secondary">写入浏览器存档</button>
+            <button id="reset-file" class="ghost">撤销修改</button>
+          </div>
+        </div>
+        <div id="file-meta" class="meta-grid"></div>
+        <nav id="tabs" class="tabs"></nav>
+        <div id="tab-content" class="tab-content"></div>
+        <div id="status-bar" class="status-bar"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" role="status"></div>
+
+  <script src="jszip.min.js"></script>
+  <script src="pvz-save-core.js"></script>
+  <script src="save-editor.js"></script>
+</body>
+</html>

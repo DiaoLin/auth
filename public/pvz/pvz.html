@@ -149,16 +149,30 @@
     #cloud-save-dialog button:disabled { opacity: .55; cursor: wait }
     #cloud-save-login a { color: #4ecca3 }
     #start-cloud-save-button,
-    #game-cloud-save-button {
+    #start-save-editor-link,
+    #game-cloud-save-button,
+    #cloud-save-editor-link {
+      display: inline-block;
       padding: 8px 12px;
       border: 1px solid #4ecca3;
       border-radius: 6px;
       color: #4ecca3;
       background: #2b2b40;
       font-weight: 700;
+      text-decoration: none;
       cursor: pointer;
     }
-    #start-cloud-save-button { margin-top: 12px }
+    #start-button, #start-cloud-save-button, #start-save-editor-link {
+      min-height: 46px;
+      box-sizing: border-box;
+      line-height: 1.2;
+    }
+    #start-cloud-save-button, #start-save-editor-link {
+      margin-top: 12px;
+      padding: 12px 20px;
+      font-size: 1rem;
+      line-height: 1.2;
+    }
     #game-cloud-save-button { position: fixed; z-index: 5; top: 12px; left: 12px }
     #save-sync-status {
       position: fixed;
@@ -180,6 +194,7 @@
     <input id="resource-url" type="url" value="/pvz-res.zip" aria-label="资源下载地址" autocomplete="url">
     <button id="start-button" type="button">开始游戏</button>
     <button id="start-cloud-save-button" type="button">☁️ 云存档</button>
+    <a id="start-save-editor-link" href="save-editor.html" target="_blank" rel="noopener">🛠 存档编辑器</a>
     <p id="loading-status" role="status" aria-live="polite"></p>
     <progress id="download-progress" max="100" value="0" hidden aria-label="资源下载进度"></progress>
   </main>
@@ -205,6 +220,7 @@
         <button id="cloud-save-refresh" type="button">刷新</button>
         <button id="cloud-save-close" type="button">关闭</button>
       </div>
+      <p style="color:#aaa">要直接修改本机存档，请关闭游戏页面后使用 <a id="cloud-save-editor-link" href="save-editor.html" target="_blank" rel="noopener">存档编辑器</a>。</p>
     </section>
   </div>
   <div id="app-modal-overlay" class="modal-overlay" hidden>
