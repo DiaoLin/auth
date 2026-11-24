@@ -103,6 +103,18 @@
       cursor: pointer;
     }
     .modal-actions button.primary { color: #10251f; background: #4ecca3 }
+    #app-modal-input {
+      display: block;
+      width: 100%;
+      margin-top: 12px;
+      padding: 10px 12px;
+      border: 1px solid #4ecca3;
+      border-radius: 6px;
+      color: #eee;
+      background: #222238;
+      font: inherit;
+    }
+    #app-modal-input[hidden] { display: none }
     #cloud-save-dialog {
       width: min(460px, calc(100vw - 32px));
       max-height: 80vh;
@@ -116,27 +128,49 @@
     #cloud-save-dialog h2 { margin: 0 0 12px; color: #4ecca3; font-size: 1.25rem }
     #cloud-save-status { min-height: 1.4em; color: #ff8b8b }
     .cloud-save-slot {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin: 12px 0;
       padding: 12px;
+      margin: 12px 0;
       border: 1px solid #44445a;
       border-radius: 8px;
     }
-    .cloud-save-slot p { margin: 0; overflow-wrap: anywhere }
-    .cloud-save-slot small { display: block; margin-top: 5px; color: #aaa }
-    .cloud-save-slot button, #cloud-save-continue {
-      flex: 0 0 auto;
+    .cloud-save-slot strong,
+    .cloud-save-slot small { display: block; overflow-wrap: anywhere }
+    .cloud-save-slot small { margin-top: 5px; color: #aaa }
+    .cloud-save-slot-actions,
+    #cloud-save-dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px }
+    #cloud-save-dialog button {
       padding: 8px 12px;
       color: #4ecca3;
       background: #2b2b40;
+      border: 1px solid #4ecca3;
+      border-radius: 6px;
+      cursor: pointer;
     }
-    #cloud-save-continue { margin-top: 8px }
+    #cloud-save-dialog button:disabled { opacity: .55; cursor: wait }
+    #cloud-save-login a { color: #4ecca3 }
+    #start-cloud-save-button,
+    #game-cloud-save-button {
+      padding: 8px 12px;
+      border: 1px solid #4ecca3;
+      border-radius: 6px;
+      color: #4ecca3;
+      background: #2b2b40;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    #start-cloud-save-button { margin-top: 12px }
+    #game-cloud-save-button { position: fixed; z-index: 5; top: 12px; left: 12px }
+    #save-sync-status {
+      position: fixed;
+      z-index: 5;
+      top: 18px;
+      left: 150px;
+      color: #eee;
+      font-size: .9rem;
+      pointer-events: none;
+    }
     @media (max-width: 420px) {
       body { padding: 18px }
-      .cloud-save-slot { align-items: flex-start; flex-direction: column }
     }
   </style>
 </head>
@@ -145,11 +179,14 @@
     <h1>Plants vs. Zombies GOTY Edition<span>植物大战僵尸年度版</span></h1>
     <input id="resource-url" type="url" value="/pvz-res.zip" aria-label="资源下载地址" autocomplete="url">
     <button id="start-button" type="button">开始游戏</button>
+    <button id="start-cloud-save-button" type="button">☁️ 云存档</button>
     <p id="loading-status" role="status" aria-live="polite"></p>
     <progress id="download-progress" max="100" value="0" hidden aria-label="资源下载进度"></progress>
   </main>
 
   <main id="canvas-container">
+    <button id="game-cloud-save-button" type="button">☁️ 云存档</button>
+    <p id="save-sync-status" role="status" aria-live="polite"></p>
     <canvas id="canvas" width="800" height="600" tabindex="0"></canvas>
     <div id="game-loading" role="status" aria-live="polite">
       <p id="game-loading-status">正在启动游戏…</p>
@@ -159,17 +196,22 @@
 
   <div id="cloud-save-overlay" class="modal-overlay" hidden>
     <section id="cloud-save-dialog" role="dialog" aria-modal="true" aria-labelledby="cloud-save-title" tabindex="-1">
-      <h2 id="cloud-save-title">发现云存档</h2>
-      <p>选择一个存档导入，或直接继续游戏。</p>
+      <h2 id="cloud-save-title">云存档</h2>
+      <p>每台设备最多保存两个槽位，每个存档不超过 10 MiB。</p>
       <p id="cloud-save-status" role="status" aria-live="polite"></p>
+      <p id="cloud-save-login" hidden><a href="/check.html">先登录设备</a>后即可使用云存档。</p>
       <div id="cloud-save-list"></div>
-      <button id="cloud-save-continue" type="button">不导入，继续游戏</button>
+      <div id="cloud-save-dialog-actions">
+        <button id="cloud-save-refresh" type="button">刷新</button>
+        <button id="cloud-save-close" type="button">关闭</button>
+      </div>
     </section>
   </div>
   <div id="app-modal-overlay" class="modal-overlay" hidden>
     <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="app-modal-title" aria-describedby="app-modal-message" tabindex="-1">
       <h2 id="app-modal-title">确认操作</h2>
       <p id="app-modal-message"></p>
+      <input id="app-modal-input" type="text" maxlength="40" hidden>
       <div class="modal-actions">
         <button id="app-modal-cancel" type="button">取消</button>
         <button id="app-modal-confirm" class="primary" type="button">继续</button>
@@ -210,26 +252,34 @@
     const cloudSaveOverlay = document.getElementById("cloud-save-overlay");
     const cloudSaveList = document.getElementById("cloud-save-list");
     const cloudSaveStatus = document.getElementById("cloud-save-status");
-    const cloudSaveContinue = document.getElementById("cloud-save-continue");
+    const cloudSaveLogin = document.getElementById("cloud-save-login");
     const appModalOverlay = document.getElementById("app-modal-overlay");
     const appModalTitle = document.getElementById("app-modal-title");
     const appModalMessage = document.getElementById("app-modal-message");
+    const appModalInput = document.getElementById("app-modal-input");
     const appModalCancel = document.getElementById("app-modal-cancel");
     const appModalConfirm = document.getElementById("app-modal-confirm");
+    const saveSyncStatus = document.getElementById("save-sync-status");
     const resourceFiles = new Map();
-    let cloudSaveImporting = false;
-    let cloudSaveWarning = "";
     let saveFsReadyPromise = null;
-    let cloudSaveDialogResolve = null;
+    let saveBackend = "";
+    let saveSyncInFlight = null;
+    let saveSyncQueued = false;
+    let saveSyncIntervalId = 0;
     let appModalResolve = null;
+    let appModalHasInput = false;
+    let saveDatabasePromise = null;
 
-    function showConfirmModal(message) {
-      appModalTitle.textContent = "确认操作";
+    function showAppModal(message, options = {}) {
+      appModalTitle.textContent = options.title || "确认操作";
       appModalMessage.textContent = message;
-      appModalCancel.hidden = false;
-      appModalConfirm.textContent = "继续";
+      appModalHasInput = Object.prototype.hasOwnProperty.call(options, "inputValue");
+      appModalInput.hidden = !appModalHasInput;
+      appModalInput.value = appModalHasInput ? options.inputValue : "";
+      appModalCancel.hidden = !options.confirm && !appModalHasInput;
+      appModalConfirm.textContent = options.confirm ? "继续" : "确定";
       appModalOverlay.hidden = false;
-      appModalConfirm.focus();
+      (appModalHasInput ? appModalInput : appModalConfirm).focus();
       return new Promise((resolve) => {
         appModalResolve = resolve;
       });
@@ -240,7 +290,17 @@
       const resolve = appModalResolve;
       appModalResolve = null;
       appModalOverlay.hidden = true;
-      resolve(result);
+      resolve(result
+        ? appModalHasInput ? appModalInput.value : true
+        : appModalHasInput ? null : false);
+    }
+
+    function showConfirmModal(message) {
+      return showAppModal(message, { confirm: true });
+    }
+
+    function askForText(message, inputValue) {
+      return showAppModal(message, { inputValue });
     }
 
     function setProgress(value, max) {
@@ -333,7 +393,7 @@
         bytes >= 1024 ? (bytes / 1024).toFixed(1) + " KiB" : bytes + " B";
     }
 
-    async function cloudSaveApi(path) {
+    async function cloudSaveApi(path, options = {}) {
       let token;
       try {
         token = localStorage.getItem("device_token");
@@ -341,20 +401,63 @@
         throw new Error("无法读取设备登录信息。");
       }
       if (!token) return null;
+      const headers = new Headers(options.headers || {});
+      headers.set("Authorization", "Bearer " + token);
       const response = await fetch("/api/cloud-saves" + path, {
+        ...options,
         cache: "no-store",
-        headers: { Authorization: "Bearer " + token }
+        headers
       });
       if (response.status === 401) return null;
-      if (!response.ok) throw new Error("无法读取云存档（HTTP " + response.status + "）。");
+      if (!response.ok) {
+        let message = "云存档请求失败（HTTP " + response.status + "）。";
+        try {
+          const data = await response.json();
+          if (data.error) message = data.error;
+        } catch {
+          // Keep the HTTP error when the response is not JSON.
+        }
+        throw new Error(message);
+      }
       return response;
     }
 
-    async function findCloudSaves() {
-      const response = await cloudSaveApi("");
-      if (!response) return [];
-      const data = await response.json();
-      return (data.slots || []).filter((save) => save.name);
+    function openSaveDatabase() {
+      if (!saveDatabasePromise) {
+        saveDatabasePromise = new Promise((resolve, reject) => {
+          if (!window.indexedDB) {
+            reject(new Error("此浏览器不支持 IndexedDB，无法保存本机进度。"));
+            return;
+          }
+          const request = window.indexedDB.open("pvz-browser-saves", 1);
+          request.onupgradeneeded = () => {
+            if (!request.result.objectStoreNames.contains("saves")) {
+              request.result.createObjectStore("saves");
+            }
+          };
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error || new Error("无法打开本机存档数据库。"));
+          request.onblocked = () => reject(new Error("本机存档数据库升级被其他页面阻止，请关闭其他游戏页面后重试。"));
+        });
+      }
+      return saveDatabasePromise;
+    }
+
+    async function saveDatabaseRequest(mode, operation, value) {
+      const database = await openSaveDatabase();
+      return new Promise((resolve, reject) => {
+        const transaction = database.transaction("saves", mode);
+        const store = transaction.objectStore("saves");
+        const request = operation === "get" ? store.get("userdata") :
+          operation === "delete" ? store.delete("userdata") :
+            store.put(value, "userdata");
+        let result;
+        request.onsuccess = () => { result = request.result; };
+        request.onerror = () => reject(request.error || new Error("本机存档数据库操作失败。"));
+        transaction.oncomplete = () => resolve(result);
+        transaction.onerror = () => reject(transaction.error || new Error("本机存档数据库事务失败。"));
+        transaction.onabort = () => reject(transaction.error || new Error("本机存档数据库事务已中止。"));
+      });
     }
 
     async function ensureSaveFsReady() {
@@ -362,10 +465,34 @@
         saveFsReadyPromise = (async () => {
           await window.moduleReadyPromise;
           if (!Module.FS.analyzePath("/saves").exists) Module.FS.mkdir("/saves");
-          Module.FS.mount(Module.FS.filesystems.IDBFS, {}, "/saves");
-          await new Promise((resolve, reject) => Module.FS.syncfs(true, (error) =>
-            error ? reject(error) : resolve()
-          ));
+          if (Module.FS.filesystems && Module.FS.filesystems.IDBFS) {
+            Module.FS.mount(Module.FS.filesystems.IDBFS, {}, "/saves");
+            await new Promise((resolve, reject) => Module.FS.syncfs(true, (error) =>
+              error ? reject(error) : resolve()
+            ));
+            saveBackend = "idbfs";
+          } else {
+            saveBackend = "indexeddb";
+            const snapshot = await saveDatabaseRequest("readonly", "get");
+            if (!snapshot || !snapshot.byteLength) return;
+            const zip = await JSZip.loadAsync(snapshot);
+            const entries = Object.entries(zip.files).filter(([, entry]) => !entry.dir);
+            if (entries.length > 1000) throw new Error("本机存档文件数量无效。");
+            for (const [entryPath, entry] of entries) {
+              const path = entryPath.replace(/\\/g, "/").replace(/^\/+/, "");
+              const parts = path.split("/");
+              if (!path || parts.some((part) => !part || part === "." || part === "..")) {
+                throw new Error("本机存档包含无效文件路径。");
+              }
+              const contents = await entry.async("uint8array");
+              if (!Module.FS.analyzePath("/saves/userdata").exists) {
+                Module.FS.mkdir("/saves/userdata");
+              }
+              const target = "/saves/" + parts.join("/");
+              Module.FS.mkdirTree(target.slice(0, target.lastIndexOf("/")));
+              Module.FS.writeFile(target, contents);
+            }
+          }
         })();
       }
       return saveFsReadyPromise;
@@ -383,6 +510,68 @@
         else files.push(path);
       }
       return files;
+    }
+
+    async function syncSaves() {
+      await ensureSaveFsReady();
+      if (saveSyncInFlight) {
+        saveSyncQueued = true;
+        return saveSyncInFlight;
+      }
+      saveSyncInFlight = (async () => {
+        do {
+          saveSyncQueued = false;
+          if (saveBackend === "idbfs") {
+            await new Promise((resolve, reject) => Module.FS.syncfs(false, (error) =>
+              error ? reject(error) : resolve()
+            ));
+            continue;
+          }
+          const files = collectSaveFiles("/saves/userdata");
+          if (!files.length) {
+            await saveDatabaseRequest("readwrite", "delete");
+            continue;
+          }
+          const zip = new JSZip();
+          for (const file of files) {
+            zip.file(file.replace(/^\/saves\//, ""), Module.FS.readFile(file));
+          }
+          const snapshot = await zip.generateAsync({
+            type: "uint8array",
+            compression: "DEFLATE",
+            compressionOptions: { level: 6 }
+          });
+          await saveDatabaseRequest("readwrite", "put", snapshot);
+        } while (saveSyncQueued);
+      })();
+      try {
+        await saveSyncInFlight;
+      } finally {
+        saveSyncInFlight = null;
+      }
+    }
+
+    function startSaveAutosync() {
+      if (saveSyncIntervalId) return;
+      saveSyncIntervalId = window.setInterval(() => {
+        syncSaves().then(() => {
+          saveSyncStatus.textContent = "";
+        }).catch((error) => {
+          console.error("本机存档同步失败：", error);
+          saveSyncStatus.textContent = "本机存档同步失败，请打开云存档面板检查。";
+        });
+      }, 5000);
+    }
+
+    function syncSavesBeforeLeaving() {
+      if (saveFsReadyPromise) {
+        syncSaves().catch((error) => console.error("离开页面前保存失败：", error));
+      }
+    }
+
+    function setCloudSaveStatus(message, isError = false) {
+      cloudSaveStatus.textContent = message;
+      cloudSaveStatus.style.color = isError ? "#ff8b8b" : "#aaa";
     }
 
     async function importCloudSave(save) {
@@ -430,67 +619,140 @@
         Module.FS.mkdirTree(path.slice(0, path.lastIndexOf("/")));
         Module.FS.writeFile(path, file.contents);
       }
-      await new Promise((resolve, reject) => Module.FS.syncfs(false, (error) =>
-        error ? reject(error) : resolve()
-      ));
+      await syncSaves();
       return true;
     }
 
-    async function showCloudSaveDialog(saves) {
-      cloudSaveList.replaceChildren();
-      cloudSaveStatus.textContent = "";
-      for (const save of saves) {
-        const card = document.createElement("section");
-        const details = document.createElement("p");
-        const title = document.createElement("strong");
-        const updated = document.createElement("small");
-        const loadButton = document.createElement("button");
-        card.className = "cloud-save-slot";
-        title.textContent = save.name;
-        updated.textContent = save.updated_at
-          ? "更新时间：" + new Date(save.updated_at).toLocaleString("zh-CN")
-          : "";
-        details.append(title, updated);
-        loadButton.type = "button";
-        loadButton.textContent = "导入";
-        loadButton.addEventListener("click", async () => {
-          cloudSaveImporting = true;
-          cloudSaveContinue.disabled = true;
-          for (const button of cloudSaveList.querySelectorAll("button")) button.disabled = true;
-          cloudSaveStatus.textContent = "正在导入云存档…";
-          try {
-            const imported = await importCloudSave(save);
-            if (imported) closeCloudSaveDialog(true);
-            else {
-              cloudSaveStatus.textContent = "";
-              for (const button of cloudSaveList.querySelectorAll("button")) button.disabled = false;
-            }
-          } catch (error) {
-            cloudSaveStatus.textContent = error.message || "云存档导入失败。";
-            for (const button of cloudSaveList.querySelectorAll("button")) button.disabled = false;
-          } finally {
-            cloudSaveImporting = false;
-            cloudSaveContinue.disabled = false;
-          }
-        });
-        card.append(details, loadButton);
-        cloudSaveList.appendChild(card);
+    async function uploadCloudSave(save) {
+      const defaultName = save.name || "PVZ 存档 " + new Date().toLocaleDateString("zh-CN");
+      const name = await askForText("请输入云存档名称（最多 40 个字符）：", defaultName);
+      if (name === null) return;
+      if (!name.trim()) {
+        setCloudSaveStatus("存档名称不能为空。", true);
+        return;
       }
-      cloudSaveOverlay.hidden = false;
-      cloudSaveDialog.focus();
-      return new Promise((resolve) => {
-        cloudSaveDialogResolve = resolve;
-      });
+      if (save.name && !await showConfirmModal("确定覆盖云存档“" + save.name + "”吗？")) return;
+      try {
+        setCloudSaveStatus("正在准备本机存档…");
+        await ensureSaveFsReady();
+        await syncSaves();
+        const files = collectSaveFiles("/saves/userdata");
+        if (!files.length) throw new Error("未找到本机游戏存档。");
+        const zip = new JSZip();
+        for (const file of files) {
+          zip.file(file.replace(/^\/saves\//, ""), Module.FS.readFile(file));
+        }
+        const data = await zip.generateAsync({
+          type: "uint8array",
+          compression: "DEFLATE",
+          compressionOptions: { level: 6 }
+        });
+        const response = await cloudSaveApi(
+          "/" + save.slot + "?name=" + encodeURIComponent(name.trim()),
+          { method: "PUT", headers: { "Content-Type": "application/octet-stream" }, body: data }
+        );
+        if (!response) throw new Error("登录设备后才能使用云存档。");
+        await refreshCloudSaveList();
+        setCloudSaveStatus("云存档已上传。");
+      } catch (error) {
+        setCloudSaveStatus(error.message || "云存档上传失败。", true);
+      }
     }
 
-    function closeCloudSaveDialog(force = false) {
-      if (cloudSaveImporting && !force) return;
-      cloudSaveOverlay.hidden = true;
-      if (cloudSaveDialogResolve) {
-        const resolve = cloudSaveDialogResolve;
-        cloudSaveDialogResolve = null;
-        resolve();
+    async function renameCloudSave(save) {
+      const name = await askForText("请输入新名称（最多 40 个字符）：", save.name);
+      if (name === null) return;
+      if (!name.trim()) {
+        setCloudSaveStatus("存档名称不能为空。", true);
+        return;
       }
+      try {
+        const response = await cloudSaveApi("/" + save.slot, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: name.trim() })
+        });
+        if (!response) throw new Error("登录设备后才能使用云存档。");
+        await refreshCloudSaveList();
+      } catch (error) {
+        setCloudSaveStatus(error.message || "云存档重命名失败。", true);
+      }
+    }
+
+    async function deleteCloudSave(save) {
+      if (!await showConfirmModal("确定删除云存档“" + save.name + "”吗？")) return;
+      try {
+        const response = await cloudSaveApi("/" + save.slot, { method: "DELETE" });
+        if (!response) throw new Error("登录设备后才能使用云存档。");
+        await refreshCloudSaveList();
+      } catch (error) {
+        setCloudSaveStatus(error.message || "云存档删除失败。", true);
+      }
+    }
+
+    async function refreshCloudSaveList() {
+      cloudSaveList.replaceChildren();
+      cloudSaveLogin.hidden = true;
+      setCloudSaveStatus("正在读取云存档…");
+      try {
+        const response = await cloudSaveApi("");
+        if (!response) {
+          cloudSaveLogin.hidden = false;
+          setCloudSaveStatus("请先登录设备。", true);
+          return;
+        }
+        const data = await response.json();
+        setCloudSaveStatus("");
+        for (const save of data.slots || []) {
+          const card = document.createElement("section");
+          const title = document.createElement("strong");
+          const details = document.createElement("small");
+          const actions = document.createElement("div");
+          const uploadButton = document.createElement("button");
+          card.className = "cloud-save-slot";
+          title.textContent = "槽位 " + save.slot + (save.name ? " — " + save.name : " — 空");
+          details.textContent = save.updated_at
+            ? "更新时间：" + new Date(save.updated_at).toLocaleString("zh-CN") +
+              " · " + formatSize(save.size_bytes)
+            : "尚无云存档";
+          actions.className = "cloud-save-slot-actions";
+          uploadButton.type = "button";
+          uploadButton.textContent = save.name ? "覆盖并上传本机存档" : "上传本机存档";
+          uploadButton.addEventListener("click", () => uploadCloudSave(save));
+          actions.appendChild(uploadButton);
+          if (save.name) {
+            const importButton = document.createElement("button");
+            const renameButton = document.createElement("button");
+            const deleteButton = document.createElement("button");
+            importButton.type = renameButton.type = deleteButton.type = "button";
+            importButton.textContent = "导入到本机";
+            renameButton.textContent = "重命名";
+            deleteButton.textContent = "删除";
+            importButton.addEventListener("click", async () => {
+              try {
+                setCloudSaveStatus("正在导入云存档…");
+                const imported = await importCloudSave(save);
+                setCloudSaveStatus(imported ? "云存档已导入到本机。" : "");
+              } catch (error) {
+                setCloudSaveStatus(error.message || "云存档导入失败。", true);
+              }
+            });
+            renameButton.addEventListener("click", () => renameCloudSave(save));
+            deleteButton.addEventListener("click", () => deleteCloudSave(save));
+            actions.append(importButton, renameButton, deleteButton);
+          }
+          card.append(title, details, actions);
+          cloudSaveList.appendChild(card);
+        }
+      } catch (error) {
+        setCloudSaveStatus(error.message || "无法读取云存档。", true);
+      }
+    }
+
+    function openCloudSaveDialog() {
+      cloudSaveOverlay.hidden = false;
+      cloudSaveDialog.focus();
+      refreshCloudSaveList();
     }
 
     async function startGame() {
@@ -500,20 +762,10 @@
       downloadProgress.hidden = true;
       try {
         await downloadResources();
-        loadingStatus.textContent = "正在检查云存档…";
-        let saves = [];
-        try {
-          saves = await findCloudSaves();
-        } catch (error) {
-          cloudSaveWarning = "云存档暂时无法读取，正在继续启动游戏…";
-          loadingStatus.textContent = cloudSaveWarning;
-        }
-        if (saves.length) await showCloudSaveDialog(saves);
-
         startScreen.style.display = "none";
         canvasContainer.style.display = "flex";
         gameLoading.hidden = false;
-        gameLoadingStatus.textContent = cloudSaveWarning || "正在加载游戏…";
+        gameLoadingStatus.textContent = "正在加载游戏…";
         await window.moduleReadyPromise;
         const entries = Array.from(resourceFiles.entries());
         const total = entries.reduce((sum, [, contents]) => sum + contents.byteLength, 0);
@@ -533,6 +785,8 @@
         }
         gameLoadingStatus.textContent = "正在读取本机存档…";
         await ensureSaveFsReady();
+        await syncSaves();
+        startSaveAutosync();
         gameLoading.hidden = true;
         Module.callMain([]);
         resourceFiles.clear();
@@ -547,24 +801,36 @@
       }
     }
 
-    cloudSaveContinue.addEventListener("click", () => closeCloudSaveDialog());
+    document.getElementById("start-cloud-save-button").addEventListener("click", openCloudSaveDialog);
+    document.getElementById("game-cloud-save-button").addEventListener("click", openCloudSaveDialog);
+    document.getElementById("cloud-save-refresh").addEventListener("click", refreshCloudSaveList);
+    document.getElementById("cloud-save-close").addEventListener("click", () => {
+      cloudSaveOverlay.hidden = true;
+    });
     cloudSaveOverlay.addEventListener("click", (event) => {
-      if (event.target === cloudSaveOverlay) closeCloudSaveDialog();
+      if (event.target === cloudSaveOverlay) cloudSaveOverlay.hidden = true;
     });
     document.getElementById("app-modal-cancel").addEventListener("click", () => finishAppModal(false));
     document.getElementById("app-modal-confirm").addEventListener("click", () => finishAppModal(true));
+    appModalInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") finishAppModal(true);
+    });
     appModalOverlay.addEventListener("click", (event) => {
       if (event.target === appModalOverlay) finishAppModal(false);
     });
     document.addEventListener("keydown", (event) => {
       if (event.key !== "Escape") return;
       if (!appModalOverlay.hidden) finishAppModal(false);
-      else if (!cloudSaveOverlay.hidden) closeCloudSaveDialog();
+      else if (!cloudSaveOverlay.hidden) cloudSaveOverlay.hidden = true;
     });
     startButton.addEventListener("click", startGame);
     resourceUrl.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !startButton.disabled) startGame();
     });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") syncSavesBeforeLeaving();
+    });
+    window.addEventListener("pagehide", syncSavesBeforeLeaving);
   </script>
 </body>
 </html>

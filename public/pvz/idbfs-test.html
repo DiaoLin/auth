@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PVZ IndexedDB 持久化测试</title>
+  <style>
+    :root { color-scheme: dark }
+    * { box-sizing: border-box }
+    body {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 28px 18px;
+      color: #eee;
+      background: #1a1a2e;
+      font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    h1 { color: #4ecca3; font-size: 1.6rem }
+    p { color: #ccc }
+    button {
+      margin: 8px 8px 8px 0;
+      padding: 10px 14px;
+      border: 1px solid #4ecca3;
+      border-radius: 6px;
+      color: #10251f;
+      background: #4ecca3;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button.secondary { color: #4ecca3; background: #222238 }
+    button:disabled { cursor: wait; opacity: .6 }
+    #status { min-height: 1.5em; font-weight: 700 }
+    #status[data-result="pass"] { color: #4ecca3 }
+    #status[data-result="fail"] { color: #ff8b8b }
+    #logs {
+      min-height: 180px;
+      max-height: 50vh;
+      overflow: auto;
+      padding: 14px 14px 14px 42px;
+      border: 1px solid #44445a;
+      border-radius: 8px;
+      background: #11111f;
+      overflow-wrap: anywhere;
+    }
+    #logs li { padding: 3px 0; color: #ddd }
+    #logs li.error { color: #ff8b8b }
+    code { color: #9debd0 }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>PVZ IndexedDB 持久化测试</h1>
+    <p>
+      测试页加载与 <code>pvz-portable.html</code> 相同的 Emscripten 运行时，
+      使用 IDBFS 挂载并调用 <code>FS.syncfs</code> 写入、重读测试数据。
+      测试数据写入独立的 IndexedDB 数据库和 <code>/pvz-idbfs-diagnostic</code> 目录，
+      不会读取、覆盖或删除游戏存档。
+    </p>
+    <p id="status" role="status" aria-live="polite">正在加载游戏运行时…</p>
+    <button id="run-test" type="button" disabled>写入并刷新验证</button>
+    <button id="clear-test" class="secondary" type="button" disabled>清除测试数据</button>
+    <ol id="logs" aria-label="测试日志"></ol>
+  </main>
+  <canvas id="canvas" width="1" height="1" hidden></canvas>
+
+  <script>
+    window.moduleReadyPromise = new Promise((resolve, reject) => {
+      window._resolveModuleReady = resolve;
+      window._rejectModuleReady = reject;
+    });
+    var Module = {
+      canvas: document.getElementById("canvas"),
+      noInitialRun: true,
+      onRuntimeInitialized: () => window._resolveModuleReady(),
+      onAbort: (message) => window._rejectModuleReady(new Error(message)),
+      print: (message) => console.log(message),
+      printErr: (message) => console.warn(message)
+    };
+    const runtimeScript = document.createElement("script");
+    runtimeScript.src = "/pvz/pvz-portable.js";
+    runtimeScript.async = true;
+    runtimeScript.onerror = () => window._rejectModuleReady(new Error("无法加载 PVZ 游戏运行时。"));
+    document.head.appendChild(runtimeScript);
+  </script>
+  <script>
+    const DATABASE_NAME = "PVZ_IDBFS_DIAGNOSTIC_V1";
+    const MOUNT_POINT = "/pvz-idbfs-diagnostic";
+    const TEST_FILE = MOUNT_POINT + "/probe.json";
+    const statusElement = document.getElementById("status");
+    const logList = document.getElementById("logs");
+    const runButton = document.getElementById("run-test");
+    const clearButton = document.getElementById("clear-test");
+    let filesystemReady = null;
+
+    function log(message, isError = false) {
+      const item = document.createElement("li");
+      item.textContent = new Date().toLocaleTimeString("zh-CN") + " — " + message;
+      if (isError) item.className = "error";
+      logList.appendChild(item);
+      logList.scrollTop = logList.scrollHeight;
+    }
+
+    function setStatus(message, result = "") {
+      statusElement.textContent = message;
+      statusElement.dataset.result = result;
+    }
+
+    function syncFilesystem(populate) {
+      return new Promise((resolve, reject) => {
+        Module.FS.syncfs(populate, (error) => error ? reject(error) : resolve());
+      });
+    }
+
+    function ensureFilesystemReady() {
+      if (!filesystemReady) {
+        filesystemReady = (async () => {
+          await window.moduleReadyPromise;
+          if (!Module.FS || !Module.FS.filesystems || !Module.FS.filesystems.IDBFS) {
+            throw new Error("当前运行时没有提供 IDBFS。");
+          }
+          if (!Module.FS.analyzePath(MOUNT_POINT).exists) Module.FS.mkdir(MOUNT_POINT);
+          Module.FS.mount(Module.FS.filesystems.IDBFS, { dbname: DATABASE_NAME }, MOUNT_POINT);
+          log("已挂载独立 IDBFS 数据库：" + DATABASE_NAME);
+          await syncFilesystem(true);
+          log("syncfs(true) 完成：已从 IndexedDB 恢复测试目录。");
+        })();
+      }
+      return filesystemReady;
+    }
+
+    function readTestRecord() {
+      if (!Module.FS.analyzePath(TEST_FILE).exists) return null;
+      return JSON.parse(Module.FS.readFile(TEST_FILE, { encoding: "utf8" }));
+    }
+
+    async function initialize() {
+      try {
+        await ensureFilesystemReady();
+        const record = readTestRecord();
+        const expected = new URL(location.href).searchParams.get("verify");
+        if (expected) {
+          history.replaceState(null, "", location.pathname);
+          if (record && record.token === expected) {
+            log("刷新后读回的测试标记与写入值一致：" + record.token);
+            setStatus("通过：刷新页面后仍能从 IndexedDB 读回刚写入的数据。", "pass");
+          } else {
+            log("刷新后未读到预期测试标记。", true);
+            setStatus("失败：刷新后数据缺失或内容不匹配。", "fail");
+          }
+        } else if (record) {
+          log("发现上次运行留下的测试标记：" + record.token);
+          setStatus("已恢复先前测试数据；可再次运行完整测试。", "pass");
+        } else {
+          log("存储初始化成功，测试目录中暂无历史标记。");
+          setStatus("就绪：点击“写入并刷新验证”开始测试。");
+        }
+        runButton.disabled = false;
+        clearButton.disabled = false;
+      } catch (error) {
+        console.error("IndexedDB 持久化测试失败：", error);
+        log("初始化失败：" + (error.message || error), true);
+        setStatus("失败：" + (error.message || "无法初始化 IDBFS。"), "fail");
+      }
+    }
+
+    runButton.addEventListener("click", async () => {
+      runButton.disabled = true;
+      clearButton.disabled = true;
+      try {
+        await ensureFilesystemReady();
+        const token = crypto.randomUUID
+          ? crypto.randomUUID()
+          : Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+        const record = { token, writtenAt: new Date().toISOString() };
+        Module.FS.writeFile(TEST_FILE, JSON.stringify(record));
+        log("已写入唯一测试标记：" + token);
+        await syncFilesystem(false);
+        log("syncfs(false) 完成：测试标记已写入 IndexedDB。");
+        setStatus("写入成功，正在刷新并检查持久化结果…");
+        const url = new URL(location.href);
+        url.searchParams.set("verify", token);
+        location.replace(url.href);
+      } catch (error) {
+        console.error("IndexedDB 写入测试失败：", error);
+        log("写入失败：" + (error.message || error), true);
+        setStatus("失败：" + (error.message || "无法写入 IndexedDB。"), "fail");
+        runButton.disabled = false;
+        clearButton.disabled = false;
+      }
+    });
+
+    clearButton.addEventListener("click", async () => {
+      runButton.disabled = true;
+      clearButton.disabled = true;
+      try {
+        await ensureFilesystemReady();
+        if (Module.FS.analyzePath(TEST_FILE).exists) Module.FS.unlink(TEST_FILE);
+        await syncFilesystem(false);
+        log("已清除独立测试标记；游戏存档未触及。");
+        setStatus("测试数据已清除。");
+      } catch (error) {
+        console.error("清除测试数据失败：", error);
+        log("清除失败：" + (error.message || error), true);
+        setStatus("失败：" + (error.message || "无法清除测试数据。"), "fail");
+      } finally {
+        runButton.disabled = false;
+        clearButton.disabled = false;
+      }
+    });
+
+    initialize();
+  </script>
+</body>
+</html>
