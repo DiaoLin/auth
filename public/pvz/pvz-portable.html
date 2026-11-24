@@ -514,6 +514,19 @@
                 cursor: default
             }
 
+            #save-toolbar button.active {
+                color: #10251f;
+                background: #4ecca3
+            }
+
+            #zoom-value {
+                color: #eee;
+                font-size: .85em;
+                min-width: 3.8em;
+                text-align: center;
+                font-variant-numeric: tabular-nums
+            }
+
             @media (max-height:760px),
             (max-width:640px) {
                 body.upload-mode {
@@ -727,7 +740,7 @@
             <p class=note>Copyright (C) 2026 Zhou Qiankang &lt;<a href=mailto:wszqkzqk@qq.com style=color:#4ecca3;text-decoration:underline>wszqkzqk@qq.com</a>></p>
         </div>
         <div id=canvas-container>
-            <div id=save-toolbar><button id=save-export-btn title="Export saves as ZIP">💾 Export Saves</button><button class=cloud-save-open-btn type=button>☁️ Cloud Saves</button></div><canvas height=600 id=canvas tabindex=0 width=800></canvas>
+            <div id=save-toolbar><button id=zoom-out type=button title="Zoom out">−</button><span id=zoom-value>自适应</span><button id=zoom-in type=button title="Zoom in">＋</button><button id=zoom-fit class=active type=button title="Fit to window">自适应</button><button id=zoom-fullscreen type=button title="In-page fullscreen">⛶ 全屏</button><button id=save-export-btn title="Export saves as ZIP">💾 Export Saves</button><button class=cloud-save-open-btn type=button>☁️ Cloud Saves</button></div><canvas height=600 id=canvas tabindex=0 width=800></canvas>
         </div><textarea autocapitalize=off autocomplete=off autocorrect=off enterkeyhint=done id=pvz-soft-keyboard spellcheck=false></textarea>
         <div id=cloud-save-overlay hidden>
             <section id=cloud-save-dialog role=dialog aria-modal=true aria-labelledby=cloud-save-title tabindex=-1>
@@ -786,7 +799,9 @@
                 saveSyncInFlight = null,
                 saveSyncQueued = !1,
                 lastSaveSyncAt = 0,
-                saveFsReadyPromise = null;
+                saveFsReadyPromise = null,
+                viewMode = "fit",
+                viewScale = 1;
             const SAVE_SYNC_INTERVAL_MS = 5e3,
                 SAVE_CLOSE_WARNING_MS = 7e3,
                 dropZone = document.getElementById("drop-zone"),
@@ -1111,13 +1126,43 @@
                 dropZone.classList.contains("ready") && (e.target.closest("#drop-zone-reselect") || e.target.closest("#file-list") || startGame())
             }
 
+            function fitCanvasScale() {
+                var e = document.getElementById("canvas"),
+                    t = document.getElementById("canvas-container");
+                return Math.min(t.clientWidth / e.width, t.clientHeight / e.height)
+            }
+
             function resizeCanvas() {
                 var e = document.getElementById("canvas"),
-                    t = document.getElementById("canvas-container"),
-                    n = t.clientWidth,
-                    a = t.clientHeight,
-                    o = Math.min(n / e.width, a / e.height);
-                e.style.width = Math.floor(e.width * o) + "px", e.style.height = Math.floor(e.height * o) + "px"
+                    scale = viewMode === "fit" ? fitCanvasScale() : viewScale;
+                scale = Math.max(.2, Math.min(scale, 4));
+                e.style.width = Math.floor(e.width * scale) + "px", e.style.height = Math.floor(e.height * scale) + "px";
+                var label = document.getElementById("zoom-value"),
+                    fitButton = document.getElementById("zoom-fit");
+                label && (label.textContent = viewMode === "fit" ? "自适应" : Math.round(scale * 100) + "%");
+                fitButton && fitButton.classList.toggle("active", viewMode === "fit")
+            }
+
+            function setCanvasZoom(scale) {
+                viewMode = "manual";
+                viewScale = Math.max(.2, Math.min(scale, 4));
+                resizeCanvas()
+            }
+
+            function setCanvasFit() {
+                viewMode = "fit";
+                resizeCanvas()
+            }
+
+            async function toggleCanvasFullscreen() {
+                var t = document.getElementById("canvas-container");
+                try {
+                    if (document.fullscreenElement || document.webkitFullscreenElement) await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+                    else await t.requestFullscreen()
+                } catch (e) {
+                    console.warn("Fullscreen failed:", e)
+                }
+                resizeCanvas()
             }
 
             function canSyncSaves() {
@@ -1360,7 +1405,7 @@
                     }
                     await ensureSaveFsReady();
                     const current = collectSaveFiles("/saves/userdata");
-                    if (current.length && !await showConfirmation("This will replace " + current.length + " local save files. Continue?")) return;
+                    if (!await showConfirmation("Importing this cloud save will replace the local save data and restart the game. Continue?")) return;
                     for (const file of current) Module.FS.unlink(file);
                     function removeSaveDirectories(directory) {
                         let entries;
@@ -1396,7 +1441,8 @@
                     }
                     await syncSaves();
                     recordImport("Cloud save (" + save.name + ")", !0, "Imported " + files.length + " files");
-                    setCloudSaveStatus("Cloud save imported.", !1)
+                    setCloudSaveStatus("Cloud save imported. Restarting game…", !1);
+                    if (gameStarted && typeof window.onGameExit === "function") window.onGameExit()
                 } catch (error) {
                     setCloudSaveStatus(error.message || String(error), !0)
                 }
@@ -1600,7 +1646,11 @@
                 if ("Escape" !== event.key) return;
                 if (!appModalOverlay.hidden) finishAppModal(false);
                 else if (!cloudSaveOverlay.hidden) closeCloudSaveDialog()
-            }), document.getElementById("cloud-save-refresh").addEventListener("click", refreshCloudSaveList), window.addEventListener("fullscreenchange", resizeCanvas), document.getElementById("save-export-btn").addEventListener("click", exportSaves), uploadSaveImportBtn.addEventListener("click", () => {
+            }), document.getElementById("zoom-out").addEventListener("click", () => {
+                setCanvasZoom((viewMode === "fit" ? fitCanvasScale() : viewScale) - .1)
+            }), document.getElementById("zoom-in").addEventListener("click", () => {
+                setCanvasZoom((viewMode === "fit" ? fitCanvasScale() : viewScale) + .1)
+            }), document.getElementById("zoom-fit").addEventListener("click", setCanvasFit), document.getElementById("zoom-fullscreen").addEventListener("click", toggleCanvasFullscreen), document.getElementById("cloud-save-refresh").addEventListener("click", refreshCloudSaveList), window.addEventListener("fullscreenchange", resizeCanvas), document.getElementById("save-export-btn").addEventListener("click", exportSaves), uploadSaveImportBtn.addEventListener("click", () => {
                 uploadSaveImportInput.click()
             }), uploadSaveImportInput.addEventListener("change", e => {
                 const t = e.target.files[0];

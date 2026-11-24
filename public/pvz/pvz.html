@@ -50,15 +50,60 @@
       display: none;
       position: fixed;
       inset: 0;
-      align-items: center;
-      justify-content: center;
+      flex-direction: column;
       overflow: hidden;
       background: #000;
     }
-    canvas { display: block; background: #000; outline: 0 }
+    #game-toolbar {
+      flex: 0 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 10px;
+      border-bottom: 1px solid #353553;
+      background: rgba(20, 20, 38, .94);
+      z-index: 6;
+    }
+    #game-toolbar button {
+      padding: 6px 10px;
+      border: 1px solid #4ecca3;
+      border-radius: 6px;
+      color: #4ecca3;
+      background: #2b2b40;
+      font-size: .88rem;
+      font-weight: 700;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    #game-toolbar button:hover { background: #253b36 }
+    #game-toolbar button.active { color: #10251f; background: #4ecca3 }
+    #game-toolbar .toolbar-value {
+      min-width: 58px;
+      color: #eee;
+      font-size: .88rem;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+    }
+    #game-toolbar .toolbar-spacer { flex: 1 1 auto }
+    #game-stage {
+      position: relative;
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #game-stage:fullscreen {
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+    }
+    canvas { display: block; max-width: none; background: #000; outline: 0 }
     #game-loading {
       position: absolute;
       inset: 0;
+      z-index: 8;
       display: grid;
       align-content: center;
       justify-items: center;
@@ -150,7 +195,6 @@
     #cloud-save-login a { color: #4ecca3 }
     #start-cloud-save-button,
     #start-save-editor-link,
-    #game-cloud-save-button,
     #cloud-save-editor-link {
       display: inline-block;
       padding: 8px 12px;
@@ -173,14 +217,13 @@
       font-size: 1rem;
       line-height: 1.2;
     }
-    #game-cloud-save-button { position: fixed; z-index: 5; top: 12px; left: 12px }
     #save-sync-status {
-      position: fixed;
-      z-index: 5;
-      top: 18px;
-      left: 150px;
+      max-width: min(34vw, 320px);
+      overflow: hidden;
       color: #eee;
-      font-size: .9rem;
+      font-size: .85rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       pointer-events: none;
     }
     @media (max-width: 420px) {
@@ -200,9 +243,20 @@
   </main>
 
   <main id="canvas-container">
-    <button id="game-cloud-save-button" type="button">☁️ 云存档</button>
-    <p id="save-sync-status" role="status" aria-live="polite"></p>
-    <canvas id="canvas" width="800" height="600" tabindex="0"></canvas>
+    <div id="game-toolbar">
+      <button id="zoom-out" type="button" title="缩小">−</button>
+      <span id="zoom-value" class="toolbar-value" aria-live="polite">自适应</span>
+      <button id="zoom-in" type="button" title="放大">＋</button>
+      <button id="zoom-fit" type="button" class="active" title="自适应窗口大小">自适应</button>
+      <button id="zoom-fullscreen" type="button" title="网页内全屏">⛶ 全屏</button>
+      <button id="game-cloud-save-button" type="button">☁️ 云存档</button>
+      <button id="exit-game-button" type="button" title="退出游戏并返回开始页">退出</button>
+      <span class="toolbar-spacer"></span>
+      <span id="save-sync-status" role="status" aria-live="polite"></span>
+    </div>
+    <div id="game-stage">
+      <canvas id="canvas" width="800" height="600" tabindex="0"></canvas>
+    </div>
     <div id="game-loading" role="status" aria-live="polite">
       <p id="game-loading-status">正在启动游戏…</p>
       <progress id="game-progress" max="100" value="0"></progress>
@@ -276,7 +330,16 @@
     const appModalCancel = document.getElementById("app-modal-cancel");
     const appModalConfirm = document.getElementById("app-modal-confirm");
     const saveSyncStatus = document.getElementById("save-sync-status");
+    const canvasEl = document.getElementById("canvas");
+    let gameStage = document.getElementById("game-stage");
+    const zoomValue = document.getElementById("zoom-value");
+    const zoomFitButton = document.getElementById("zoom-fit");
+    const NATIVE_CANVAS_WIDTH = 800;
+    const NATIVE_CANVAS_HEIGHT = 600;
     const resourceFiles = new Map();
+    let viewMode = "fit";
+    let viewScale = 1;
+    let resizeFrame = 0;
     let saveFsReadyPromise = null;
     let saveBackend = "";
     let saveSyncInFlight = null;
@@ -407,6 +470,61 @@
     function formatSize(bytes) {
       return bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + " MiB" :
         bytes >= 1024 ? (bytes / 1024).toFixed(1) + " KiB" : bytes + " B";
+    }
+
+    function ensureGameStage() {
+      let stage = document.getElementById("game-stage");
+      if (!stage || !stage.contains(canvasEl)) {
+        stage = document.createElement("div");
+        stage.id = "game-stage";
+        canvasEl.parentNode.insertBefore(stage, canvasEl);
+        stage.appendChild(canvasEl);
+      }
+      gameStage = stage;
+      return stage;
+    }
+
+    function applyCanvasScale() {
+      if (resizeFrame) cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = 0;
+        const stage = ensureGameStage();
+        let scale = viewScale;
+        if (viewMode === "fit") {
+          const availableWidth = Math.max(1, stage.clientWidth - 16);
+          const availableHeight = Math.max(1, stage.clientHeight - 16);
+          scale = Math.min(availableWidth / NATIVE_CANVAS_WIDTH, availableHeight / NATIVE_CANVAS_HEIGHT);
+        }
+        scale = Math.max(0.2, Math.min(scale, 4));
+        canvasEl.style.width = Math.round(NATIVE_CANVAS_WIDTH * scale) + "px";
+        canvasEl.style.height = Math.round(NATIVE_CANVAS_HEIGHT * scale) + "px";
+        zoomValue.textContent = viewMode === "fit" ? "自适应" : Math.round(scale * 100) + "%";
+        zoomFitButton.classList.toggle("active", viewMode === "fit");
+      });
+    }
+
+    function setZoom(scale) {
+      viewMode = "manual";
+      viewScale = Math.max(0.2, Math.min(scale, 4));
+      applyCanvasScale();
+    }
+
+    function setFitMode() {
+      viewMode = "fit";
+      applyCanvasScale();
+    }
+
+    async function togglePageFullscreen() {
+      try {
+        if (document.fullscreenElement || document.webkitFullscreenElement) {
+          await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+        } else {
+          await ensureGameStage().requestFullscreen();
+        }
+      } catch (error) {
+        console.warn("全屏切换失败：", error);
+      }
+      applyCanvasScale();
     }
 
     async function cloudSaveApi(path, options = {}) {
@@ -579,10 +697,49 @@
       }, 5000);
     }
 
+    function stopSaveAutosync() {
+      if (saveSyncIntervalId) {
+        clearInterval(saveSyncIntervalId);
+        saveSyncIntervalId = 0;
+      }
+    }
+
     function syncSavesBeforeLeaving() {
       if (saveFsReadyPromise) {
         syncSaves().catch((error) => console.error("离开页面前保存失败：", error));
       }
+    }
+
+    async function handleGameExit() {
+      stopSaveAutosync();
+      try {
+        await syncSaves();
+      } catch (error) {
+        console.error("退出前保存失败：", error);
+      }
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        (document.exitFullscreen || document.webkitExitFullscreen).call(document).catch(() => {});
+      }
+      canvasContainer.style.display = "none";
+      gameLoading.hidden = true;
+      startScreen.style.display = "";
+      startButton.disabled = false;
+      resourceUrl.disabled = false;
+      saveSyncStatus.textContent = "";
+    }
+
+    async function restartGameAfterImport() {
+      stopSaveAutosync();
+      try {
+        await syncSaves();
+      } catch (error) {
+        console.error("重启前保存失败：", error);
+      }
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        (document.exitFullscreen || document.webkitExitFullscreen).call(document).catch(() => {});
+      }
+      sessionStorage.setItem("pvz-auto-start", "1");
+      window.location.reload();
     }
 
     function setCloudSaveStatus(message, isError = false) {
@@ -613,8 +770,6 @@
 
       await ensureSaveFsReady();
       const currentFiles = collectSaveFiles("/saves/userdata");
-      if (currentFiles.length &&
-          !await showConfirmModal("导入云存档将替换本机存档，是否继续？")) return false;
       for (const path of currentFiles) Module.FS.unlink(path);
       function removeDirectories(directory) {
         if (!Module.FS.analyzePath(directory).exists) return;
@@ -745,10 +900,20 @@
             renameButton.textContent = "重命名";
             deleteButton.textContent = "删除";
             importButton.addEventListener("click", async () => {
+              const confirmed = await showAppModal(
+                "导入云存档会替换当前本机存档，并立即重启游戏。当前未保存的进度可能丢失。是否继续？",
+                { title: "导入云存档", confirm: true }
+              );
+              if (!confirmed) {
+                setCloudSaveStatus("");
+                return;
+              }
               try {
                 setCloudSaveStatus("正在导入云存档…");
                 const imported = await importCloudSave(save);
-                setCloudSaveStatus(imported ? "云存档已导入到本机。" : "");
+                if (!imported) return;
+                setCloudSaveStatus("云存档已导入，正在重启游戏…");
+                await restartGameAfterImport();
               } catch (error) {
                 setCloudSaveStatus(error.message || "云存档导入失败。", true);
               }
@@ -780,6 +945,7 @@
         await downloadResources();
         startScreen.style.display = "none";
         canvasContainer.style.display = "flex";
+        applyCanvasScale();
         gameLoading.hidden = false;
         gameLoadingStatus.textContent = "正在加载游戏…";
         await window.moduleReadyPromise;
@@ -817,6 +983,29 @@
       }
     }
 
+    function fitScale() {
+      const stage = ensureGameStage();
+      return Math.min(
+        Math.max(1, stage.clientWidth - 16) / NATIVE_CANVAS_WIDTH,
+        Math.max(1, stage.clientHeight - 16) / NATIVE_CANVAS_HEIGHT
+      );
+    }
+
+    document.getElementById("zoom-out").addEventListener("click", () => {
+      const current = viewMode === "fit" ? fitScale() : viewScale;
+      setZoom(current - 0.1);
+    });
+    document.getElementById("zoom-in").addEventListener("click", () => {
+      const current = viewMode === "fit" ? fitScale() : viewScale;
+      setZoom(current + 0.1);
+    });
+    zoomFitButton.addEventListener("click", setFitMode);
+    document.getElementById("zoom-fullscreen").addEventListener("click", togglePageFullscreen);
+    document.getElementById("exit-game-button").addEventListener("click", handleGameExit);
+    window.addEventListener("resize", applyCanvasScale);
+    document.addEventListener("fullscreenchange", applyCanvasScale);
+    window.onGameExit = handleGameExit;
+
     document.getElementById("start-cloud-save-button").addEventListener("click", openCloudSaveDialog);
     document.getElementById("game-cloud-save-button").addEventListener("click", openCloudSaveDialog);
     document.getElementById("cloud-save-refresh").addEventListener("click", refreshCloudSaveList);
@@ -847,6 +1036,11 @@
       if (document.visibilityState === "hidden") syncSavesBeforeLeaving();
     });
     window.addEventListener("pagehide", syncSavesBeforeLeaving);
+
+    if (sessionStorage.getItem("pvz-auto-start") === "1") {
+      sessionStorage.removeItem("pvz-auto-start");
+      setTimeout(() => startGame(), 0);
+    }
   </script>
 </body>
 </html>
