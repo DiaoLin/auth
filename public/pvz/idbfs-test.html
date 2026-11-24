@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PVZ IndexedDB 持久化测试</title>
+  <script src="jszip.min.js"></script>
   <style>
     :root { color-scheme: dark }
     * { box-sizing: border-box }
@@ -52,10 +53,9 @@
   <main>
     <h1>PVZ IndexedDB 持久化测试</h1>
     <p>
-      测试页加载与 <code>pvz-portable.html</code> 相同的 Emscripten 运行时，
-      使用 IDBFS 挂载并调用 <code>FS.syncfs</code> 写入、重读测试数据。
-      测试数据写入独立的 IndexedDB 数据库和 <code>/pvz-idbfs-diagnostic</code> 目录，
-      不会读取、覆盖或删除游戏存档。
+      测试页加载与游戏相同的 Emscripten 运行时，并按游戏的存档策略选择 IDBFS，
+      或使用 IndexedDB 保存 ZIP 快照。测试数据使用独立数据库和
+      <code>/saves/userdata</code> 目录，不会读取、覆盖或删除游戏存档。
     </p>
     <p id="status" role="status" aria-live="polite">正在加载游戏运行时…</p>
     <button id="run-test" type="button" disabled>写入并刷新验证</button>
@@ -84,14 +84,17 @@
     document.head.appendChild(runtimeScript);
   </script>
   <script>
-    const DATABASE_NAME = "PVZ_IDBFS_DIAGNOSTIC_V1";
-    const MOUNT_POINT = "/pvz-idbfs-diagnostic";
-    const TEST_FILE = MOUNT_POINT + "/probe.json";
+    const IDBFS_DATABASE_NAME = "PVZ_IDBFS_DIAGNOSTIC_V1";
+    const INDEXEDDB_DATABASE_NAME = "PVZ_INDEXEDDB_DIAGNOSTIC_V1";
+    const SAVE_DIRECTORY = "/saves/userdata";
+    const TEST_FILE = SAVE_DIRECTORY + "/pvz-idbfs-diagnostic.json";
     const statusElement = document.getElementById("status");
     const logList = document.getElementById("logs");
     const runButton = document.getElementById("run-test");
     const clearButton = document.getElementById("clear-test");
     let filesystemReady = null;
+    let saveBackend = "";
+    let saveDatabasePromise = null;
 
     function log(message, isError = false) {
       const item = document.createElement("li");
@@ -112,18 +115,119 @@
       });
     }
 
+    function openSaveDatabase() {
+      if (!saveDatabasePromise) {
+        saveDatabasePromise = new Promise((resolve, reject) => {
+          if (!window.indexedDB) {
+            reject(new Error("此浏览器不支持 IndexedDB，无法保存本机进度。"));
+            return;
+          }
+          const request = window.indexedDB.open(INDEXEDDB_DATABASE_NAME, 1);
+          request.onupgradeneeded = () => {
+            if (!request.result.objectStoreNames.contains("saves")) {
+              request.result.createObjectStore("saves");
+            }
+          };
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error || new Error("无法打开本机存档数据库。"));
+          request.onblocked = () => reject(new Error("本机存档数据库升级被其他页面阻止，请关闭其他测试页面后重试。"));
+        });
+      }
+      return saveDatabasePromise;
+    }
+
+    async function saveDatabaseRequest(mode, operation, value) {
+      const database = await openSaveDatabase();
+      return new Promise((resolve, reject) => {
+        const transaction = database.transaction("saves", mode);
+        const store = transaction.objectStore("saves");
+        const request = operation === "get" ? store.get("userdata") :
+          operation === "delete" ? store.delete("userdata") :
+            store.put(value, "userdata");
+        let result;
+        request.onsuccess = () => { result = request.result; };
+        request.onerror = () => reject(request.error || new Error("本机存档数据库操作失败。"));
+        transaction.oncomplete = () => resolve(result);
+        transaction.onerror = () => reject(transaction.error || new Error("本机存档数据库事务失败。"));
+        transaction.onabort = () => reject(transaction.error || new Error("本机存档数据库事务已中止。"));
+      });
+    }
+
+    async function restoreIndexedDbSaves() {
+      const snapshot = await saveDatabaseRequest("readonly", "get");
+      if (!snapshot || !snapshot.byteLength) return;
+      const zip = await JSZip.loadAsync(snapshot);
+      const entries = Object.entries(zip.files).filter(([, entry]) => !entry.dir);
+      if (entries.length > 1000) throw new Error("本机存档文件数量无效。");
+      for (const [entryPath, entry] of entries) {
+        const path = entryPath.replace(/\\/g, "/").replace(/^\/+/, "");
+        const parts = path.split("/");
+        if (!path || parts.some((part) => !part || part === "." || part === "..")) {
+          throw new Error("本机存档包含无效文件路径。");
+        }
+        const contents = await entry.async("uint8array");
+        if (!Module.FS.analyzePath(SAVE_DIRECTORY).exists) Module.FS.mkdirTree(SAVE_DIRECTORY);
+        const target = "/saves/" + parts.join("/");
+        Module.FS.mkdirTree(target.slice(0, target.lastIndexOf("/")));
+        Module.FS.writeFile(target, contents);
+      }
+    }
+
+    function collectSaveFiles(directory) {
+      if (!Module.FS.analyzePath(directory).exists) return [];
+      const files = [];
+      for (const entry of Module.FS.readdir(directory)) {
+        if (entry === "." || entry === "..") continue;
+        const path = directory + "/" + entry;
+        const stat = Module.FS.stat(path);
+        if (Module.FS.isDir(stat.mode)) files.push(...collectSaveFiles(path));
+        else files.push(path);
+      }
+      return files;
+    }
+
+    async function persistIndexedDbSaves() {
+      const files = collectSaveFiles(SAVE_DIRECTORY);
+      if (!files.length) {
+        await saveDatabaseRequest("readwrite", "delete");
+        return;
+      }
+      const zip = new JSZip();
+      for (const file of files) {
+        zip.file(file.replace(/^\/saves\//, ""), Module.FS.readFile(file));
+      }
+      const snapshot = await zip.generateAsync({
+        type: "uint8array",
+        compression: "DEFLATE",
+        compressionOptions: { level: 6 }
+      });
+      await saveDatabaseRequest("readwrite", "put", snapshot);
+    }
+
+    async function persistSaves() {
+      if (saveBackend === "idbfs") {
+        await syncFilesystem(false);
+      } else {
+        await persistIndexedDbSaves();
+      }
+    }
+
     function ensureFilesystemReady() {
       if (!filesystemReady) {
         filesystemReady = (async () => {
           await window.moduleReadyPromise;
-          if (!Module.FS || !Module.FS.filesystems || !Module.FS.filesystems.IDBFS) {
-            throw new Error("当前运行时没有提供 IDBFS。");
+          if (!Module.FS) throw new Error("当前运行时没有提供文件系统。");
+          if (!Module.FS.analyzePath("/saves").exists) Module.FS.mkdir("/saves");
+          if (Module.FS.filesystems && Module.FS.filesystems.IDBFS) {
+            saveBackend = "idbfs";
+            Module.FS.mount(Module.FS.filesystems.IDBFS, { dbname: IDBFS_DATABASE_NAME }, "/saves");
+            await syncFilesystem(true);
+            log("存档后端：IDBFS（独立数据库 " + IDBFS_DATABASE_NAME + "）。");
+          } else {
+            saveBackend = "indexeddb";
+            await restoreIndexedDbSaves();
+            log("存档后端：IndexedDB ZIP 快照（独立数据库 " + INDEXEDDB_DATABASE_NAME + "）。");
           }
-          if (!Module.FS.analyzePath(MOUNT_POINT).exists) Module.FS.mkdir(MOUNT_POINT);
-          Module.FS.mount(Module.FS.filesystems.IDBFS, { dbname: DATABASE_NAME }, MOUNT_POINT);
-          log("已挂载独立 IDBFS 数据库：" + DATABASE_NAME);
-          await syncFilesystem(true);
-          log("syncfs(true) 完成：已从 IndexedDB 恢复测试目录。");
         })();
       }
       return filesystemReady;
@@ -173,10 +277,13 @@
           ? crypto.randomUUID()
           : Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
         const record = { token, writtenAt: new Date().toISOString() };
+        if (!Module.FS.analyzePath(SAVE_DIRECTORY).exists) Module.FS.mkdirTree(SAVE_DIRECTORY);
         Module.FS.writeFile(TEST_FILE, JSON.stringify(record));
         log("已写入唯一测试标记：" + token);
-        await syncFilesystem(false);
-        log("syncfs(false) 完成：测试标记已写入 IndexedDB。");
+        await persistSaves();
+        log(saveBackend === "idbfs"
+          ? "syncfs(false) 完成：测试标记已写入 IDBFS。"
+          : "ZIP 快照已写入 IndexedDB。");
         setStatus("写入成功，正在刷新并检查持久化结果…");
         const url = new URL(location.href);
         url.searchParams.set("verify", token);
@@ -196,7 +303,7 @@
       try {
         await ensureFilesystemReady();
         if (Module.FS.analyzePath(TEST_FILE).exists) Module.FS.unlink(TEST_FILE);
-        await syncFilesystem(false);
+        await persistSaves();
         log("已清除独立测试标记；游戏存档未触及。");
         setStatus("测试数据已清除。");
       } catch (error) {
