@@ -330,7 +330,7 @@
     const appModalCancel = document.getElementById("app-modal-cancel");
     const appModalConfirm = document.getElementById("app-modal-confirm");
     const saveSyncStatus = document.getElementById("save-sync-status");
-    const canvasEl = document.getElementById("canvas");
+    let canvasEl = document.getElementById("canvas");
     let gameStage = document.getElementById("game-stage");
     const zoomValue = document.getElementById("zoom-value");
     const zoomFitButton = document.getElementById("zoom-fit");
@@ -344,6 +344,60 @@
     let gameRunning = false;
     let needsRuntimeReload = false;
     let saveFsReadyPromise = null;
+    let listenerGeneration = 0;
+    const runtimeListeners = [];
+    const runtimeAudioContexts = [];
+
+    function trackEventTarget(target) {
+      if (!target || target.__pvzSaveTracked) return;
+      target.__pvzSaveTracked = true;
+      const originalAdd = target.addEventListener;
+      const originalRemove = target.removeEventListener;
+      target.addEventListener = function (type, listener, options) {
+        runtimeListeners.push({ target, type, listener, options, gen: listenerGeneration });
+        return originalAdd.call(this, type, listener, options);
+      };
+      target.removeEventListener = function (type, listener, options) {
+        const index = runtimeListeners.findIndex((item) =>
+          item.target === target && item.type === type && item.listener === listener);
+        if (index >= 0) runtimeListeners.splice(index, 1);
+        return originalRemove.call(this, type, listener, options);
+      };
+    }
+
+    function trackRuntimeSideEffects() {
+      trackEventTarget(window);
+      trackEventTarget(document);
+      trackEventTarget(canvasEl);
+      const NativeAudioContext = window.AudioContext || window.webkitAudioContext;
+      if (NativeAudioContext && !NativeAudioContext.__pvzSaveTracked) {
+        function TrackedAudioContext(...args) {
+          const context = new NativeAudioContext(...args);
+          runtimeAudioContexts.push({ context, gen: listenerGeneration });
+          return context;
+        }
+        TrackedAudioContext.prototype = NativeAudioContext.prototype;
+        TrackedAudioContext.__pvzSaveTracked = true;
+        window.AudioContext = window.webkitAudioContext = TrackedAudioContext;
+      }
+    }
+
+    function disposePreviousRuntime() {
+      for (const item of runtimeListeners) {
+        if (item.gen <= 0) continue;
+        try { item.target.removeEventListener(item.type, item.listener, item.options); } catch (_) {}
+      }
+      for (let i = runtimeListeners.length - 1; i >= 0; i--) {
+        if (runtimeListeners[i].gen > 0) runtimeListeners.splice(i, 1);
+      }
+      for (const item of runtimeAudioContexts) {
+        if (item.gen <= 0) continue;
+        try { item.context.close(); } catch (_) {}
+      }
+      for (let i = runtimeAudioContexts.length - 1; i >= 0; i--) {
+        if (runtimeAudioContexts[i].gen > 0) runtimeAudioContexts.splice(i, 1);
+      }
+    }
     let saveBackend = "";
     let saveSyncInFlight = null;
     let saveSyncQueued = false;
@@ -998,6 +1052,21 @@
     }
 
     async function reloadWasmRuntime() {
+      disposePreviousRuntime();
+      listenerGeneration++;
+      // 旧运行时的 WebGL 纹理/着色器状态仍留在同一个 canvas 上，
+      // 复用会导致新游戏出现错乱的素材。换一个全新的 canvas 彻底隔离。
+      const oldCanvas = canvasEl;
+      if (oldCanvas && oldCanvas.parentNode) {
+        const freshCanvas = document.createElement("canvas");
+        freshCanvas.id = "canvas";
+        freshCanvas.width = 800;
+        freshCanvas.height = 600;
+        freshCanvas.tabIndex = 0;
+        oldCanvas.parentNode.replaceChild(freshCanvas, oldCanvas);
+        canvasEl = freshCanvas;
+        trackEventTarget(canvasEl);
+      }
       try {
         const oldSDL2 = window.Module && window.Module.SDL2;
         if (oldSDL2 && oldSDL2.audio) {
@@ -1081,6 +1150,8 @@
       );
     }
 
+    trackRuntimeSideEffects();
+
     document.getElementById("zoom-out").addEventListener("click", () => {
       const current = viewMode === "fit" ? fitScale() : viewScale;
       setZoom(current - 0.1);
@@ -1126,6 +1197,7 @@
       if (document.visibilityState === "hidden") syncSavesBeforeLeaving();
     });
     window.addEventListener("pagehide", syncSavesBeforeLeaving);
+    listenerGeneration = 1;
   </script>
 </body>
 </html>

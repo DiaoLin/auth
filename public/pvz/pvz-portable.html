@@ -858,6 +858,46 @@
                 needsRuntimeReload = !1,
                 viewMode = "fit",
                 viewScale = 1;
+            let listenerGeneration = 0;
+            const runtimeListeners = [], runtimeAudioContexts = [];
+            function trackEventTarget(n) {
+                if (!n || n.__pvzSaveTracked) return;
+                n.__pvzSaveTracked = !0;
+                var add = n.addEventListener, remove = n.removeEventListener;
+                n.addEventListener = function(t, f, o) {
+                    runtimeListeners.push({ target: n, type: t, listener: f, options: o, gen: listenerGeneration });
+                    return add.call(this, t, f, o)
+                };
+                n.removeEventListener = function(t, f, o) {
+                    var i = runtimeListeners.findIndex(e => e.target === n && e.type === t && e.listener === f);
+                    if (i >= 0) runtimeListeners.splice(i, 1);
+                    return remove.call(this, t, f, o)
+                }
+            }
+            function trackRuntimeSideEffects() {
+                trackEventTarget(window), trackEventTarget(document), trackEventTarget(document.getElementById("canvas"));
+                var NativeAudioContext = window.AudioContext || window.webkitAudioContext;
+                if (NativeAudioContext && !NativeAudioContext.__pvzSaveTracked) {
+                    function TrackedAudioContext() {
+                        var ctx = new NativeAudioContext(...arguments);
+                        runtimeAudioContexts.push({ context: ctx, gen: listenerGeneration });
+                        return ctx
+                    }
+                    TrackedAudioContext.prototype = NativeAudioContext.prototype;
+                    TrackedAudioContext.__pvzSaveTracked = !0;
+                    window.AudioContext = window.webkitAudioContext = TrackedAudioContext
+                }
+            }
+            function disposePreviousRuntime() {
+                for (var item of runtimeListeners) if (item.gen > 0) try {
+                    item.target.removeEventListener(item.type, item.listener, item.options)
+                } catch (e) {}
+                for (var i = runtimeListeners.length - 1; i >= 0; i--) runtimeListeners[i].gen > 0 && runtimeListeners.splice(i, 1);
+                for (var item2 of runtimeAudioContexts) if (item2.gen > 0) try {
+                    item2.context.close()
+                } catch (e) {}
+                for (var j = runtimeAudioContexts.length - 1; j >= 0; j--) runtimeAudioContexts[j].gen > 0 && runtimeAudioContexts.splice(j, 1)
+            }
             const SAVE_SYNC_INTERVAL_MS = 5e3,
                 SAVE_CLOSE_WARNING_MS = 7e3,
                 dropZone = document.getElementById("drop-zone"),
@@ -1334,6 +1374,15 @@
 
             async function reloadWasmRuntime() {
                 showRestartOverlay("正在重启游戏…");
+                disposePreviousRuntime();
+                listenerGeneration++;
+                var oldCanvas = document.getElementById("canvas");
+                if (oldCanvas && oldCanvas.parentNode) {
+                    var freshCanvas = document.createElement("canvas");
+                    freshCanvas.id = "canvas", freshCanvas.width = 800, freshCanvas.height = 600, freshCanvas.tabIndex = 0;
+                    oldCanvas.parentNode.replaceChild(freshCanvas, oldCanvas);
+                    trackEventTarget(freshCanvas)
+                }
                 try {
                     var oldSDL2 = window.Module && window.Module.SDL2;
                     if (oldSDL2 && oldSDL2.audio) {
@@ -1748,6 +1797,7 @@
                     e.disabled = !1, e.textContent = t
                 }
             }
+            trackRuntimeSideEffects();
             dropZone.addEventListener("dragover", e => {
                 e.preventDefault(), dropZone.classList.add("dragover")
             }), dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover")), dropZone.addEventListener("drop", async e => {
@@ -1838,7 +1888,8 @@
                 gameStarted && (syncSaves(), Date.now() - lastSaveSyncAt >= 7e3 && (e.preventDefault(), e.returnValue = "Recent save data may still be syncing. Wait a moment or export saves before leaving."))
             }), window.onGameExit = function() {
                 stopGameRuntime(), document.fullscreenElement && document.exitFullscreen().catch(function() {}), document.getElementById("canvas-container").style.display = "none", document.getElementById("upload-screen").style.display = "", document.body.classList.remove("game-mode"), document.body.classList.add("upload-mode"), dropZone.classList.remove("loading"), dropZone.style.pointerEvents = "", loadStatus.style.display = "none", loadStatus.classList.remove("has-error"), refreshUI()
-            }
+            };
+            listenerGeneration = 1
         </script>
     </body>
 
