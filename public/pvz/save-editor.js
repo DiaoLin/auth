@@ -470,6 +470,11 @@
 
   function renderTab(entry) {
     const node = $("#tab-content");
+    // 重新渲染会先清空内容，页面高度瞬间变小会让浏览器把滚动条夹回顶部。
+    // 记录并恢复滚动位置，避免修改下拉框时页面莫名跳到上面。
+    const scrollX = window.scrollX || 0;
+    const scrollY = window.scrollY || 0;
+    const innerTop = node.scrollTop;
     clear(node);
     try {
       if (entry.kind === "profile") renderProfileTab(entry, node);
@@ -480,6 +485,8 @@
       console.error(error);
       node.append(notice("渲染失败：" + (error.message || String(error)), "error"));
     }
+    if (scrollX || scrollY) window.scrollTo(scrollX, scrollY);
+    if (innerTop) node.scrollTop = innerTop;
   }
 
   /* ------------------------------------------------------------------ */
