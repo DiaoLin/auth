@@ -336,6 +336,28 @@
     }
     #toast.show { opacity: 1; transform: translateY(0); }
     #toast.error { border-color: #ffb1b1; color: #2a0f14; background: #ff9b9b; }
+    #confirm-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      background: rgb(0 0 0 / 75%);
+    }
+    #confirm-overlay[hidden] { display: none; }
+    .confirm-box {
+      width: min(420px, calc(100vw - 32px));
+      padding: 20px;
+      border: 1px solid var(--green);
+      border-radius: 12px;
+      color: var(--text);
+      background: #1d1d32;
+      box-shadow: 0 16px 50px #0009;
+    }
+    .confirm-box h3 { margin: 0 0 10px; color: var(--green); font-size: 1.1rem; }
+    .confirm-box p { margin: 0; white-space: pre-line; overflow-wrap: anywhere; color: #ddd; }
+    .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
     @media (max-width: 980px) {
       .layout { grid-template-columns: 1fr; }
       .sidebar { position: static; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
@@ -448,6 +470,17 @@
   </main>
 
   <div id="toast" role="status"></div>
+
+  <div id="confirm-overlay" hidden>
+    <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+      <h3 id="confirm-title">确认操作</h3>
+      <p id="confirm-message"></p>
+      <div class="confirm-actions">
+        <button id="confirm-cancel" class="secondary" type="button">取消</button>
+        <button id="confirm-ok" type="button">确定</button>
+      </div>
+    </div>
+  </div>
 
   <script src="jszip.min.js"></script>
   <script src="pvz-save-core.js"></script>

@@ -28,6 +28,9 @@
     legacy: "旧版数据",
     error: "错误",
   };
+  const BOOL_OPTIONS = { 0: "否", 1: "是" };
+  const FLAG_OPTIONS = { 0: "关闭", 1: "开启" };
+  const ACHIEVEMENT_OPTIONS = { 0: "未解锁", 1: "已解锁" };
 
   const CHALLENGE_NAMES = [
     "生存：白天", "生存：黑夜", "生存：泳池", "生存：浓雾", "生存：屋顶",
@@ -77,27 +80,28 @@
     ["扩展 #78", "原版未使用"], ["扩展 #79", "原版未使用"],
   ];
 
+  // 顺序与 AchievementId / mEarnedAchievements[20] 完全一致。
   const ACHIEVEMENT_NAMES = [
     "Home Lawn Security（完成冒险）",
-    "Nobel Peas Prize（豌豆 Nobel 奖）",
-    "China Shop（瓷器店）",
-    "Spudow!（土豆雷）",
-    "Explodonator（爆炸）",
-    "Morticulturalist（园艺大师）",
-    "Don't Pea in the Pool（别在泳池里种豌豆）",
-    "Roll Some Heads（保龄球）",
-    "Grounded（扎根）",
-    "Zombologist（僵尸学家）",
-    "Penny Pincher（省钱达人）",
-    "Sunny Days（晴天）",
-    "Popcorn Party（爆米花派对）",
-    "Good Morning（早上好）",
-    "No Fungus Among Us（蘑菇）",
-    "Beyond the Grave（墓地之外）",
-    "Immortal（不朽）",
-    "Towering Wisdom（智慧树）",
-    "Mustache Mode（胡须模式）",
-    "Zombatar（僵尸头像）",
+    "Nobel Peas Prize（金向日葵奖杯）",
+    "Better Off Dead（我是僵尸无尽 10 连）",
+    "China Shop（花瓶破坏者无尽 15 连）",
+    "SPUDOW!（土豆雷炸僵尸）",
+    "Explodonator（樱桃炸弹一次炸 10 个僵尸）",
+    "Morticulturalist（收集全部 49 种植物）",
+    "Don't Pea in the Pool（白天泳池不用豌豆类植物）",
+    "Roll Some Heads（坚果保龄球一次撞倒 5 个僵尸）",
+    "Grounded（屋顶关卡不用投手类植物）",
+    "Zombologist（发现雪人僵尸）",
+    "Penny Pincher（单关连续拾取 30 枚金币）",
+    "Sunny Days（单关获得 8000 阳光）",
+    "Popcorn Party（玉米加农炮击败 2 个伽刚特尔）",
+    "Good Morning（白天只用蘑菇和咖啡豆通关）",
+    "No Fungus Among Us（夜晚关卡不种蘑菇）",
+    "Beyond the Grave（完成全部 20 个小游戏）",
+    "Immortal（生存模式坚持 20 波）",
+    "Towering Wisdom（智慧树长到 100 英尺）",
+    "Mustache Mode（开启胡须模式）",
   ];
 
   /* ------------------------------------------------------------------ */
@@ -134,6 +138,42 @@
     node.className = isError ? "show error" : "show";
     clearTimeout(state.toastTimer);
     state.toastTimer = setTimeout(() => { node.className = ""; }, isError ? 5200 : 3000);
+  }
+
+  let confirmResolve = null;
+  let confirmId = 0;
+  const pendingConfirms = new Map();
+
+  function showConfirm(message, options = {}) {
+    if (embedMode && window.parent && window.parent !== window) {
+      const id = ++confirmId;
+      return new Promise((resolve) => {
+        pendingConfirms.set(id, resolve);
+        window.parent.postMessage({
+          type: "pvz-editor-confirm",
+          id,
+          message,
+          title: options.title || "确认操作"
+        }, window.location.origin);
+      });
+    }
+    const overlay = $("#confirm-overlay");
+    $("#confirm-title").textContent = options.title || "确认操作";
+    $("#confirm-message").textContent = message;
+    $("#confirm-ok").textContent = options.okText || "确定";
+    $("#confirm-cancel").hidden = options.confirmOnly === true;
+    overlay.hidden = false;
+    (options.confirmOnly ? $("#confirm-ok") : $("#confirm-cancel")).focus();
+    return new Promise((resolve) => { confirmResolve = resolve; });
+  }
+
+  function finishConfirm(result) {
+    $("#confirm-overlay").hidden = true;
+    if (confirmResolve) {
+      const resolve = confirmResolve;
+      confirmResolve = null;
+      resolve(result);
+    }
   }
 
   function setStatus(message, type = "") {
@@ -215,18 +255,6 @@
       try { onChange(input.value); } catch (error) { toast(error.message || String(error), true); }
     });
     return input;
-  }
-
-  function checkboxControl(value, onChange) {
-    const input = h("input", { type: "checkbox", checked: !!value });
-    input.addEventListener("change", () => {
-      try { onChange(input.checked); } catch (error) { toast(error.message || String(error), true); }
-    });
-    return input;
-  }
-
-  function check(label, value, onChange) {
-    return h("label", { class: "check" }, checkboxControl(value, onChange), h("span", null, label));
   }
 
   function selectControl(value, table, onChange) {
@@ -544,11 +572,11 @@
 
     node.append(h("div", { style: "margin-top:16px" },
       sectionTitle("进度开关", "这些字段对应 PlayerInfo 中的全局标志"),
-      h("div", { class: "checks" }, PROFILE_FLAGS.map(([key, label]) =>
-        check(label, m[key], (checked) => {
-          m[key] = checked ? 1 : 0;
+      h("div", { class: "grid2" }, PROFILE_FLAGS.map(([key, label]) =>
+        field(label, key, selectControl(m[key], FLAG_OPTIONS, (value) => {
+          m[key] = value;
           markDirty(entry, `${label} 已修改`);
-        })
+        }))
       ))
     ));
 
@@ -693,8 +721,8 @@
       }
       body.append(grid, h("div", { class: "quick" }, h("button", {
         class: "danger btn-mini",
-        onclick: () => {
-          if (!confirm(`删除第 ${index + 1} 株植物？`)) return;
+        onclick: async () => {
+          if (!await showConfirm(`删除第 ${index + 1} 株植物？`)) return;
           m.plants.splice(index, 1);
           markDirty(entry, "已删除植物");
           renderTab(entry);
@@ -724,24 +752,26 @@
       h("button", { class: "secondary btn-mini", onclick: () => { m.achievements = m.achievements.map(() => 1); markDirty(entry, "已解锁全部成就"); renderTab(entry); } }, "全部解锁"),
       h("button", { class: "secondary btn-mini", onclick: () => { m.achievements = m.achievements.map(() => 0); markDirty(entry, "已清空成就"); renderTab(entry); } }, "全部清除")
     ));
-    const checks = h("div", { class: "checks" });
+    const grid = h("div", { class: "grid2" });
     for (let i = 0; i < 20; i++) {
-      checks.append(check(ACHIEVEMENT_NAMES[i] || `成就 #${i}`, m.achievements[i] !== 0, (checked) => {
-        m.achievements[i] = checked ? 1 : 0;
-        markDirty(entry, `成就 #${i} 已修改`);
-      }));
+      grid.append(field(ACHIEVEMENT_NAMES[i] || `成就 #${i}`, `achievements[${i}]`,
+        selectControl(m.achievements[i], ACHIEVEMENT_OPTIONS, (value) => {
+          m.achievements[i] = value;
+          markDirty(entry, `成就 #${i} 已修改`);
+        })
+      ));
     }
-    node.append(checks);
+    node.append(grid);
   }
 
   function renderProfileAdvanced(entry, m, node) {
     node.append(sectionTitle("高级 / 原始信息", "这些字段通常不需要修改。"));
     const grid = h("div", { class: "grid2" });
     grid.append(
-      field("Zombatar 已接受", "zombatarAccepted", checkboxControl(m.zombatarAccepted, (v) => { m.zombatarAccepted = v ? 1 : 0; markDirty(entry, "Zombatar 状态已修改"); })),
+      field("Zombatar 已接受", "zombatarAccepted", selectControl(m.zombatarAccepted, BOOL_OPTIONS, (v) => { m.zombatarAccepted = v; markDirty(entry, "Zombatar 状态已修改"); })),
       field("Zombatar 数量", "zombatarCount", readOnly(String(m.zombatarCount))),
       field("Zombatar 数据大小", "zombatarData", readOnly(formatBytes(m.zombatarData.length))),
-      field("Zombatar 创建于旧版本", "zombatarCreatedBefore", checkboxControl(m.zombatarCreatedBefore, (v) => { m.zombatarCreatedBefore = v ? 1 : 0; markDirty(entry, "Zombatar 标志已修改"); })),
+      field("Zombatar 创建于旧版本", "zombatarCreatedBefore", selectControl(m.zombatarCreatedBefore, BOOL_OPTIONS, (v) => { m.zombatarCreatedBefore = v; markDirty(entry, "Zombatar 标志已修改"); })),
       field("小游戏标志（20 字节）", "miniGameFlags", readOnly(Array.from(m.miniGameFlags).join(","))),
       field("尾部附加数据", "trailing", readOnly(formatBytes(m.trailing.length))),
     );
@@ -796,8 +826,8 @@
         h("td", null, numberControl(profile.id, (value) => { profile.id = clampInt(value, 0, 0xffffffff); markDirty(entry); }, { min: 0 })),
         h("td", null, h("button", {
           class: "danger btn-mini",
-          onclick: () => {
-            if (!confirm(`删除用户“${profile.name}”？`)) return;
+          onclick: async () => {
+            if (!await showConfirm(`删除用户“${profile.name}”？`)) return;
             m.profiles.splice(index, 1);
             markDirty(entry, "已删除用户");
             renderTab(entry);
@@ -893,8 +923,8 @@
           C.setBoardValue(board, spec, v); chunk.dirty = true; markDirty(entry, `${spec.label} 已修改`); renderTab(entry);
         })));
       } else if (spec.kind === "bool") {
-        grid.append(field(spec.label, spec.key, checkboxControl(C.getBoardValue(board, spec), (v) => {
-          C.setBoardValue(board, spec, v); chunk.dirty = true; markDirty(entry, `${spec.label} 已修改`);
+        grid.append(field(spec.label, spec.key, selectControl(C.getBoardValue(board, spec), BOOL_OPTIONS, (v) => {
+          C.setBoardValue(board, spec, v); chunk.dirty = true; markDirty(entry, `${spec.label} 已修改`); renderTab(entry);
         })));
       } else if (["i32", "u32", "i64", "f32"].includes(spec.kind)) {
         const value = C.getBoardValue(board, spec);
@@ -924,8 +954,8 @@
           C.setBoardValue(board, spec, v); chunk.dirty = true; markDirty(entry, `${spec.label} 已修改`);
         })));
       } else if (spec.kind === "bool") {
-        advGrid.append(field(spec.label, spec.key, checkboxControl(value, (v) => {
-          C.setBoardValue(board, spec, v); chunk.dirty = true; markDirty(entry, `${spec.label} 已修改`);
+        advGrid.append(field(spec.label, spec.key, selectControl(value, BOOL_OPTIONS, (v) => {
+          C.setBoardValue(board, spec, v); chunk.dirty = true; markDirty(entry, `${spec.label} 已修改`); renderTab(entry);
         })));
       } else {
         advGrid.append(field(spec.label, spec.key, numberControl(value, (v) => {
@@ -1134,9 +1164,9 @@
         const value = item.gameobject.values ? item.gameobject.values[spec.key] : null;
         if (value === undefined || value === null) continue;
         if (spec.kind === "bool") {
-          goGrid.append(field(spec.label, spec.key, checkboxControl(value, (v) => {
-            C.writeGameObject(item.gameobject.raw, spec.key, v);
-            item.gameobject.values[spec.key] = v;
+          goGrid.append(field(spec.label, spec.key, selectControl(value, BOOL_OPTIONS, (v) => {
+            C.writeGameObject(item.gameobject.raw, spec.key, !!v);
+            item.gameobject.values[spec.key] = !!v;
             chunk.dirty = true; markDirty(entry, `${spec.label} 已修改`); renderTab(entry);
           })));
         } else {
@@ -1196,9 +1226,9 @@
     const value = item.tail.values[spec.key];
     if (value === undefined) return h("span");
     if (spec.kind === "bool") {
-      return field(spec.label, spec.key, checkboxControl(value, (v) => {
-        C.writeFieldValue(spec, v, item.tail.raw, spec.offset);
-        item.tail.values[spec.key] = v;
+      return field(spec.label, spec.key, selectControl(value, BOOL_OPTIONS, (v) => {
+        C.writeFieldValue(spec, !!v, item.tail.raw, spec.offset);
+        item.tail.values[spec.key] = !!v;
         chunk.dirty = true; markDirty(entry, `${spec.label} 已修改`); renderTab(entry);
       }));
     }
@@ -1547,7 +1577,7 @@
       toast("请先点击“读取浏览器存档”", true);
       return;
     }
-    if (!confirm("写入浏览器存档会覆盖当前浏览器中的同名文件。请先关闭 PVZ 游戏页面，否则游戏可能再次覆盖。继续？")) return;
+    if (!await showConfirm("写入浏览器存档会覆盖当前浏览器中的同名文件。请先关闭 PVZ 游戏页面，否则游戏可能再次覆盖。继续？")) return;
     if (await writeOneToBrowser(entry)) {
       renderFileList();
       renderEditor();
@@ -1803,7 +1833,7 @@
   }
 
   async function deleteCloudSlot(save) {
-    if (!confirm(`确定删除云存档“${save.name}”（槽位 ${save.slot}）吗？`)) return;
+    if (!await showConfirm(`确定删除云存档“${save.name}”（槽位 ${save.slot}）吗？`)) return;
     try {
       const response = await cloudSaveApi("/" + save.slot, { method: "DELETE" });
       if (!response) throw new Error("登录设备后才能使用云存档。");
@@ -1869,7 +1899,7 @@
       cloudStatus(`注意：${base.label} 中没有 users.dat；上传后游戏可能无法列出玩家。`, true);
       return;
     }
-    if (!confirm(`将 ${base.label} 中的 ${base.files.size} 个文件上传到槽位 ${slot}（“${name}”）？这会覆盖该槽位原有内容。`)) return;
+    if (!await showConfirm(`将 ${base.label} 中的 ${base.files.size} 个文件上传到槽位 ${slot}（“${name}”）？这会覆盖该槽位原有内容。`)) return;
 
     cloudStatus("正在生成云存档 ZIP…");
     try {
@@ -1926,6 +1956,24 @@
   }
 
   function initEvents() {
+    $("#confirm-ok").addEventListener("click", () => finishConfirm(true));
+    $("#confirm-cancel").addEventListener("click", () => finishConfirm(false));
+    $("#confirm-overlay").addEventListener("click", (event) => {
+      if (event.target === $("#confirm-overlay")) finishConfirm(false);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !$("#confirm-overlay").hidden) finishConfirm(false);
+    });
+    window.addEventListener("message", (event) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data;
+      if (!data || data.type !== "pvz-editor-confirm-result") return;
+      const resolve = pendingConfirms.get(data.id);
+      if (!resolve) return;
+      pendingConfirms.delete(data.id);
+      resolve(!!data.ok);
+    });
+
     const dropZone = $("#drop-zone");
     const input = $("#file-input");
     $("#pick-files").addEventListener("click", () => input.click());
@@ -1964,10 +2012,10 @@
       const entry = state.activeId ? state.files.get(state.activeId) : null;
       if (entry) writeToBrowser(entry);
     });
-    $("#reset-file").addEventListener("click", () => {
+    $("#reset-file").addEventListener("click", async () => {
       const entry = state.activeId ? state.files.get(state.activeId) : null;
       if (!entry) return;
-      if (!confirm("撤销当前文件的所有修改并重新解析原始数据？")) return;
+      if (!await showConfirm("撤销当前文件的所有修改并重新解析原始数据？")) return;
       resetEntry(entry);
     });
   }

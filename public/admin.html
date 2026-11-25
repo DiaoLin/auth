@@ -494,7 +494,29 @@
   </div>
 </div>
 
+<div id="noticeModal" class="modal-mask">
+  <div class="modal-box">
+    <h3 id="noticeTitle">提示</h3>
+    <p id="noticeText"></p>
+    <div class="modal-btns">
+      <button id="noticeOk" class="btn-ok" type="button">确定</button>
+    </div>
+  </div>
+</div>
 <script>
+function showNotice(message, title) {
+  document.getElementById('noticeTitle').textContent = title || '提示';
+  document.getElementById('noticeText').textContent = message;
+  document.getElementById('noticeModal').classList.add('show');
+  document.getElementById('noticeOk').focus();
+}
+document.getElementById('noticeOk').addEventListener('click', function () {
+  document.getElementById('noticeModal').classList.remove('show');
+});
+document.getElementById('noticeModal').addEventListener('click', function (event) {
+  if (event.target === this) this.classList.remove('show');
+});
+
 const API_BASE = '';
 
 // 统一的请求封装
@@ -714,19 +736,19 @@ async function startApprove(requestId) {
     var data = await res.json();
 
     if (data.blocked === true) {
-      alert('无法通过：' + (data.message || '该设备名存在封禁记录'));
+      showNotice('无法通过：' + (data.message || '该设备名存在封禁记录'));
       approvingRequestId = null;
       return;
     }
     if (data.error) {
-      alert(data.error);
+      showNotice(data.error);
       approvingRequestId = null;
       return;
     }
 
     openApproveModal(data.conflicts || []);
   } catch (e) {
-    alert('网络错误');
+    showNotice('网络错误');
     approvingRequestId = null;
   }
 }

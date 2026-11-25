@@ -900,7 +900,15 @@
       if (event.origin !== window.location.origin) return;
       const data = event.data;
       if (!data || typeof data !== "object") return;
-      if (data.type === "pvz-editor-close") {
+      if (data.type === "pvz-editor-confirm") {
+        const ok = await showAppModal(data.message, { title: data.title || "确认操作", confirm: true });
+        if (editorFrame.contentWindow) {
+          editorFrame.contentWindow.postMessage(
+            { type: "pvz-editor-confirm-result", id: data.id, ok },
+            window.location.origin
+          );
+        }
+      } else if (data.type === "pvz-editor-close") {
         closeEditorOverlay();
       } else if (data.type === "pvz-editor-saved") {
         const confirmed = await showAppModal(

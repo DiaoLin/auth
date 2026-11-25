@@ -919,6 +919,8 @@
             let hasPak = !1,
                 hasProperties = !1,
                 savesMounted = !1,
+                saveBackend = "",
+                saveDatabasePromise = null,
                 gameStarted = !1,
                 saveSyncIntervalId = null,
                 saveSyncInFlight = null,
@@ -1334,34 +1336,103 @@
                 resizeCanvas()
             }
 
-            function canSyncSaves() {
-                return savesMounted && Module.FS && "function" == typeof Module.FS.syncfs
+            function openSaveDatabase() {
+                return saveDatabasePromise || (saveDatabasePromise = new Promise((resolve, reject) => {
+                    if (!window.indexedDB) return reject(new Error("IndexedDB unavailable")), void 0;
+                    const q = indexedDB.open("pvz-browser-saves", 1);
+                    q.onupgradeneeded = () => {
+                        if (!q.result.objectStoreNames.contains("saves")) q.result.createObjectStore("saves")
+                    };
+                    q.onsuccess = () => resolve(q.result);
+                    q.onerror = () => reject(q.error)
+                }))
             }
+
+            function saveDatabaseRequest(mode, operation, value) {
+                return openSaveDatabase().then(database => new Promise((resolve, reject) => {
+                    const store = database.transaction("saves", mode).objectStore("saves");
+                    const q = "get" === operation ? store.get("userdata") : "delete" === operation ? store.delete("userdata") : store.put(value, "userdata");
+                    let result;
+                    q.onsuccess = () => result = q.result;
+                    q.onerror = () => reject(q.error || new Error("Save database request failed"));
+                    q.transaction.oncomplete = () => resolve(result);
+                    q.transaction.onerror = () => reject(q.transaction.error)
+                }))
+            }
+
+            function canSyncSaves() {
+                return savesMounted && Module.FS
+            }
+
             async function ensureSaveFsReady() {
                 return saveFsReadyPromise || (saveFsReadyPromise = (async () => {
                     await window.moduleReadyPromise;
                     try {
                         Module.FS.mkdir("/saves")
                     } catch (e) {}
-                    try {
-                        Module.FS.mount(Module.FS.filesystems.IDBFS, {}, "/saves")
-                    } catch (e) {}
-                    savesMounted = !0, await new Promise(e => Module.FS.syncfs(!0, t => {
-                        t && console.warn("IDBFS initial sync error:", t), e()
-                    })), lastSaveSyncAt = Date.now()
+                    if (Module.FS.filesystems && Module.FS.filesystems.IDBFS) {
+                        try {
+                            Module.FS.mount(Module.FS.filesystems.IDBFS, {}, "/saves")
+                        } catch (e) {}
+                        await new Promise(e => Module.FS.syncfs(!0, t => {
+                            t && console.warn("IDBFS initial sync error:", t), e()
+                        }));
+                        saveBackend = "idbfs"
+                    } else {
+                        saveBackend = "indexeddb";
+                        const snapshot = await saveDatabaseRequest("readonly", "get");
+                        if (!snapshot || !snapshot.byteLength) {
+                            savesMounted = !0;
+                            return
+                        }
+                        const zip = await JSZip.loadAsync(snapshot);
+                        const entries = Object.values(zip.files).filter(e => !e.dir);
+                        if (entries.length > 1000) throw new Error("Too many save files");
+                        for (const entry of entries) {
+                            const path = entry.name.replace(/\\/g, "/").replace(/^\/+/, "");
+                            const parts = path.split("/");
+                            if (!path || parts.some(p => !p || "." === p || ".." === p)) throw new Error("Invalid save path");
+                            const contents = await entry.async("uint8array");
+                            const target = "/saves/" + parts.join("/");
+                            Module.FS.mkdirTree(target.slice(0, target.lastIndexOf("/")));
+                            Module.FS.writeFile(target, contents)
+                        }
+                    }
+                    savesMounted = !0, lastSaveSyncAt = Date.now()
                 })(), saveFsReadyPromise)
             }
+
             async function syncSaves() {
-                if (canSyncSaves()) {
-                    if (saveSyncInFlight) return saveSyncQueued = !0, saveSyncInFlight;
-                    saveSyncInFlight = new Promise(e => Module.FS.syncfs(!1, t => {
-                        t ? console.warn("IDBFS persist error:", t) : lastSaveSyncAt = Date.now(), e()
-                    }));
-                    try {
-                        await saveSyncInFlight
-                    } finally {
-                        saveSyncInFlight = null, saveSyncQueued && (saveSyncQueued = !1, syncSaves())
-                    }
+                if (!canSyncSaves()) return;
+                if (saveSyncInFlight) return saveSyncQueued = !0, saveSyncInFlight;
+                saveSyncInFlight = (async () => {
+                    do {
+                        saveSyncQueued = !1;
+                        if ("idbfs" === saveBackend) {
+                            await new Promise(e => Module.FS.syncfs(!1, t => {
+                                t ? console.warn("IDBFS persist error:", t) : lastSaveSyncAt = Date.now(), e()
+                            }));
+                            continue
+                        }
+                        const files = collectSaveFiles("/saves/userdata");
+                        if (!files.length) {
+                            await saveDatabaseRequest("readwrite", "delete");
+                            continue
+                        }
+                        const zip = new JSZip;
+                        for (const file of files) zip.file(file.replace(/^\/saves\//, ""), Module.FS.readFile(file));
+                        const snapshot = await zip.generateAsync({
+                            type: "uint8array",
+                            compression: "DEFLATE",
+                            compressionOptions: { level: 6 }
+                        });
+                        await saveDatabaseRequest("readwrite", "put", snapshot)
+                    } while (saveSyncQueued)
+                })();
+                try {
+                    await saveSyncInFlight
+                } finally {
+                    saveSyncInFlight = null
                 }
             }
 
@@ -1533,7 +1604,12 @@
                 if (event.origin !== window.location.origin) return;
                 var data = event.data;
                 if (!data || "object" != typeof data) return;
-                if ("pvz-editor-close" === data.type) closeEditorOverlay();
+                if ("pvz-editor-confirm" === data.type) {
+                    var ok = await showConfirmation(data.message);
+                    if (editorFrame.contentWindow) editorFrame.contentWindow.postMessage({
+                        type: "pvz-editor-confirm-result", id: data.id, ok: ok
+                    }, window.location.origin)
+                } else if ("pvz-editor-close" === data.type) closeEditorOverlay();
                 else if ("pvz-editor-saved" === data.type) {
                     var confirmed = await showConfirmation("Save data has been written. Restart the game to load it? Current unsaved progress may be lost.");
                     if (confirmed) await restartGameFromEditor()
