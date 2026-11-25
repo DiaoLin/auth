@@ -493,9 +493,46 @@
       h("button", { class: "secondary btn-mini", onclick: () => { m.achievements = m.achievements.map(() => 1); markDirty(entry, "已解锁全部成就"); renderTab(entry); } }, "全成就")
     ));
 
+    const levelControl = h("div", { class: "range" });
+    const sceneSelect = h("select", { style: "flex:1;min-width:0" });
+    const stageSelect = h("select", { style: "flex:1;min-width:0" });
+    const sceneNames = { 1: "白天", 2: "黑夜", 3: "泳池", 4: "浓雾", 5: "屋顶" };
+    for (let scene = 1; scene <= 5; scene++) {
+      sceneSelect.append(h("option", { value: String(scene) }, `${scene} ${sceneNames[scene]}`));
+    }
+    for (let stage = 1; stage <= 10; stage++) {
+      stageSelect.append(h("option", { value: String(stage) }, String(stage)));
+    }
+    const customLevel = m.level < 1 || m.level > 50;
+    if (customLevel) {
+      sceneSelect.append(h("option", { value: "0" }, "自定义"));
+      stageSelect.append(h("option", { value: "0" }, `等级 ${m.level}`));
+      sceneSelect.value = "0";
+      stageSelect.value = "0";
+      levelControl.append(numberControl(m.level, (v) => {
+        m.level = clampInt(v, 1, 100000);
+        markDirty(entry, "等级已修改");
+        renderTab(entry);
+      }, { min: 1 }));
+    } else {
+      sceneSelect.value = String(Math.floor((m.level - 1) / 10) + 1);
+      stageSelect.value = String(((m.level - 1) % 10) + 1);
+    }
+    const applyLevel = () => {
+      const scene = Number(sceneSelect.value);
+      const stage = Number(stageSelect.value);
+      if (!scene || !stage) return;
+      m.level = (scene - 1) * 10 + stage;
+      markDirty(entry, "等级已修改");
+      renderTab(entry);
+    };
+    sceneSelect.addEventListener("change", applyLevel);
+    stageSelect.addEventListener("change", applyLevel);
+    levelControl.prepend(sceneSelect, h("span", null, "-"), stageSelect);
+
     const grid = h("div", { class: "grid2" });
     grid.append(
-      field("关卡等级", "level", numberControl(m.level, (v) => { m.level = clampInt(v, 1, 100000); markDirty(entry, "等级已修改"); renderTab(entry); }, { min: 1 })),
+      field("关卡等级（幕 - 关卡）", "level", levelControl),
       field("金币（原始值，游戏显示 ×10）", "coins", numberControl(m.coins, (v) => { m.coins = clampInt(v, 0, 99999); markDirty(entry, `金币已设为 ${formatCoins(m.coins)}`); renderTab(entry); }, { min: 0, max: 99999 })),
       field("冒险是否通关", "finishedAdventure", selectControl(m.finishedAdventure, { 0: "未通关", 1: "已通关" }, (v) => { m.finishedAdventure = v; markDirty(entry, "冒险状态已修改"); })),
       field("游戏内金币显示", "coins_display", readOnly(formatCoins(m.coins))),

@@ -527,6 +527,53 @@
                 font-variant-numeric: tabular-nums
             }
 
+            #restart-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 100;
+                display: grid;
+                place-items: center;
+                padding: 1.5em;
+                background: rgba(10, 10, 22, .92);
+                color: #eee;
+                text-align: center
+            }
+
+            #restart-overlay[hidden] {
+                display: none
+            }
+
+            #restart-overlay .restart-box {
+                padding: 1.6em 2em;
+                border: 1px solid #4ecca3;
+                border-radius: 12px;
+                background: #1a1a2e;
+                box-shadow: 0 12px 40px #0009
+            }
+
+            #restart-overlay .restart-box p {
+                margin: .6em 0 0
+            }
+
+            #restart-overlay .restart-box .hint {
+                color: #aaa;
+                font-size: .85em
+            }
+
+            #restart-overlay .spinner {
+                width: 38px;
+                height: 38px;
+                margin: 0 auto;
+                border: 3px solid #4ecca344;
+                border-top-color: #4ecca3;
+                border-radius: 50%;
+                animation: restart-spin .8s linear infinite
+            }
+
+            @keyframes restart-spin {
+                to { transform: rotate(360deg) }
+            }
+
             @media (max-height:760px),
             (max-width:640px) {
                 body.upload-mode {
@@ -742,6 +789,13 @@
         <div id=canvas-container>
             <div id=save-toolbar><button id=zoom-out type=button title="Zoom out">−</button><span id=zoom-value>自适应</span><button id=zoom-in type=button title="Zoom in">＋</button><button id=zoom-fit class=active type=button title="Fit to window">自适应</button><button id=zoom-fullscreen type=button title="In-page fullscreen">⛶ 全屏</button><button id=save-export-btn title="Export saves as ZIP">💾 Export Saves</button><button class=cloud-save-open-btn type=button>☁️ Cloud Saves</button></div><canvas height=600 id=canvas tabindex=0 width=800></canvas>
         </div><textarea autocapitalize=off autocomplete=off autocorrect=off enterkeyhint=done id=pvz-soft-keyboard spellcheck=false></textarea>
+        <div id=restart-overlay hidden>
+            <div class=restart-box>
+                <div class=spinner></div>
+                <p id=restart-overlay-text>正在重启游戏…</p>
+                <p class=hint>正在重新初始化游戏运行时并恢复资源，请稍候。</p>
+            </div>
+        </div>
         <div id=cloud-save-overlay hidden>
             <section id=cloud-save-dialog role=dialog aria-modal=true aria-labelledby=cloud-save-title tabindex=-1>
                 <h2 id=cloud-save-title>Cloud Saves</h2>
@@ -1250,7 +1304,36 @@
                 })
             }
 
+            function showRestartOverlay(text) {
+                var overlay = document.getElementById("restart-overlay");
+                if (!overlay) return;
+                var label = document.getElementById("restart-overlay-text");
+                if (label) label.textContent = text || "正在重启游戏…";
+                overlay.hidden = !1
+            }
+
+            function hideRestartOverlay() {
+                var overlay = document.getElementById("restart-overlay");
+                if (overlay) overlay.hidden = !0
+            }
+
+            async function waitForGameReady() {
+                var start = Date.now();
+                while (Date.now() - start < 15000) {
+                    if (document.title.indexOf("Plants vs. Zombies") >= 0) {
+                        await new Promise(function(r) {
+                            setTimeout(r, 80)
+                        });
+                        return
+                    }
+                    await new Promise(function(r) {
+                        setTimeout(r, 50)
+                    })
+                }
+            }
+
             async function reloadWasmRuntime() {
+                showRestartOverlay("正在重启游戏…");
                 try {
                     var oldSDL2 = window.Module && window.Module.SDL2;
                     if (oldSDL2 && oldSDL2.audio) {
@@ -1287,7 +1370,7 @@
                 if (needsRuntimeReload) await reloadWasmRuntime();
                 await window.moduleReadyPromise;
                 await writeResourcesToFs();
-                loadStatus.textContent = "Restoring saved data…", await ensureSaveFsReady(), document.body.classList.remove("upload-mode"), document.body.classList.add("game-mode"), document.getElementById("upload-screen").style.display = "none", document.getElementById("canvas-container").style.display = "flex", resizeCanvas(), loadStatus.style.display = "none", gameStarted = !0, lastSaveSyncAt = Date.now(), startSaveAutosync(), Module.callMain([]), fileInput.value = "", resourceZipInput.value = ""
+                loadStatus.textContent = "Restoring saved data…", await ensureSaveFsReady(), document.body.classList.remove("upload-mode"), document.body.classList.add("game-mode"), document.getElementById("upload-screen").style.display = "none", document.getElementById("canvas-container").style.display = "flex", resizeCanvas(), loadStatus.style.display = "none", gameStarted = !0, lastSaveSyncAt = Date.now(), startSaveAutosync(), Module.callMain([]), fileInput.value = "", resourceZipInput.value = "", await waitForGameReady(), hideRestartOverlay()
             }
 
             function stopGameRuntime() {
@@ -1304,7 +1387,7 @@
                 try {
                     loadStatus.textContent = "Preparing WebAssembly runtime…", await launchGame()
                 } catch (e) {
-                    console.error("Failed to start game:", e), loadStatus.textContent = "Error: " + (e.message || e), loadStatus.classList.add("has-error"), document.getElementById("canvas-container").style.display = "none", document.getElementById("upload-screen").style.display = "", document.body.classList.remove("game-mode"), document.body.classList.add("upload-mode"), dropZone.classList.remove("loading"), dropZone.classList.add("ready"), dropZone.style.pointerEvents = ""
+                    console.error("Failed to start game:", e), hideRestartOverlay(), loadStatus.textContent = "Error: " + (e.message || e), loadStatus.classList.add("has-error"), document.getElementById("canvas-container").style.display = "none", document.getElementById("upload-screen").style.display = "", document.body.classList.remove("game-mode"), document.body.classList.add("upload-mode"), dropZone.classList.remove("loading"), dropZone.classList.add("ready"), dropZone.style.pointerEvents = ""
                 }
             }
 
