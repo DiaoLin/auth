@@ -289,6 +289,71 @@
                 cursor: default
             }
 
+            #editor-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 500;
+                display: grid;
+                place-items: center;
+                padding: 1em;
+                background: rgba(0, 0, 0, .78)
+            }
+
+            #editor-overlay[hidden] {
+                display: none
+            }
+
+            #editor-overlay .editor-dialog {
+                display: flex;
+                flex-direction: column;
+                width: min(1100px, 96vw);
+                height: min(760px, 92vh);
+                padding: 0;
+                overflow: hidden
+            }
+
+            #editor-overlay .editor-dialog header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: .75em;
+                padding: .75em 1em;
+                border-bottom: 1px solid #4ecca3
+            }
+
+            #editor-overlay .editor-dialog h2 {
+                margin: 0;
+                font-size: 1.05em
+            }
+
+            #editor-overlay .editor-dialog header #editor-close {
+                width: 34px;
+                height: 34px;
+                padding: 0;
+                display: grid;
+                place-items: center;
+                border: 1px solid #4ecca3;
+                border-radius: 50%;
+                color: #4ecca3;
+                background: transparent;
+                font-size: 1.5em;
+                line-height: 1;
+                cursor: pointer;
+                transition: background .15s, color .15s
+            }
+
+            #editor-overlay .editor-dialog header #editor-close:hover {
+                color: #10251f;
+                background: #4ecca3
+            }
+
+            #editor-overlay iframe {
+                flex: 1;
+                width: 100%;
+                border: 0;
+                background: #141426
+            }
+
             #cloud-save-overlay,
             #app-modal-overlay {
                 position: fixed;
@@ -787,7 +852,7 @@
             <p class=note>Copyright (C) 2026 Zhou Qiankang &lt;<a href=mailto:wszqkzqk@qq.com style=color:#4ecca3;text-decoration:underline>wszqkzqk@qq.com</a>></p>
         </div>
         <div id=canvas-container>
-            <div id=save-toolbar><button id=zoom-out type=button title="Zoom out">−</button><span id=zoom-value>自适应</span><button id=zoom-in type=button title="Zoom in">＋</button><button id=zoom-fit class=active type=button title="Fit to window">自适应</button><button id=zoom-fullscreen type=button title="In-page fullscreen">⛶ 全屏</button><button id=save-export-btn title="Export saves as ZIP">💾 Export Saves</button><button class=cloud-save-open-btn type=button>☁️ Cloud Saves</button></div><canvas height=600 id=canvas tabindex=0 width=800></canvas>
+            <div id=save-toolbar><button id=zoom-out type=button title="Zoom out">−</button><span id=zoom-value>自适应</span><button id=zoom-in type=button title="Zoom in">＋</button><button id=zoom-fit class=active type=button title="Fit to window">自适应</button><button id=zoom-fullscreen type=button title="In-page fullscreen">⛶ 全屏</button><button id=game-editor-button type=button>🛠 存档编辑器</button><button id=save-export-btn title="Export saves as ZIP">💾 Export Saves</button><button class=cloud-save-open-btn type=button>☁️ Cloud Saves</button></div><canvas height=600 id=canvas tabindex=0 width=800></canvas>
         </div><textarea autocapitalize=off autocomplete=off autocorrect=off enterkeyhint=done id=pvz-soft-keyboard spellcheck=false></textarea>
         <div id=restart-overlay hidden>
             <div class=restart-box>
@@ -795,6 +860,12 @@
                 <p id=restart-overlay-text>正在重启游戏…</p>
                 <p class=hint>正在重新初始化游戏运行时并恢复资源，请稍候。</p>
             </div>
+        </div>
+        <div id=editor-overlay hidden>
+            <section class="modal-panel editor-dialog" role=dialog aria-modal=true aria-labelledby=editor-overlay-title>
+                <header><h2 id=editor-overlay-title>🛠 存档编辑器</h2><button id=editor-close type=button title="Close editor" aria-label="Close editor">×</button></header>
+                <iframe id=editor-frame title="Save Editor"></iframe>
+            </section>
         </div>
         <div id=cloud-save-overlay hidden>
             <section id=cloud-save-dialog role=dialog aria-modal=true aria-labelledby=cloud-save-title tabindex=-1>
@@ -917,6 +988,8 @@
                 cloudSaveList = document.getElementById("cloud-save-list"),
                 cloudSaveStatus = document.getElementById("cloud-save-status"),
                 cloudSaveLogin = document.getElementById("cloud-save-login"),
+                editorOverlay = document.getElementById("editor-overlay"),
+                editorFrame = document.getElementById("editor-frame"),
                 appModalOverlay = document.getElementById("app-modal-overlay"),
                 appModalTitle = document.getElementById("app-modal-title"),
                 appModalMessage = document.getElementById("app-modal-message"),
@@ -1440,6 +1513,33 @@
                 }
             }
 
+            async function restartGameFromEditor() {
+                stopGameRuntime(), document.fullscreenElement && document.exitFullscreen().catch(function() {});
+                editorOverlay.hidden = !0, editorFrame.src = "about:blank";
+                await startGame()
+            }
+
+            function openEditorOverlay() {
+                null !== saveSyncIntervalId && (clearInterval(saveSyncIntervalId), saveSyncIntervalId = null);
+                editorOverlay.hidden = !1, editorFrame.src = "save-editor.html?embed=1"
+            }
+
+            function closeEditorOverlay() {
+                editorOverlay.hidden = !0, editorFrame.src = "about:blank";
+                gameStarted && startSaveAutosync()
+            }
+
+            window.addEventListener("message", async event => {
+                if (event.origin !== window.location.origin) return;
+                var data = event.data;
+                if (!data || "object" != typeof data) return;
+                if ("pvz-editor-close" === data.type) closeEditorOverlay();
+                else if ("pvz-editor-saved" === data.type) {
+                    var confirmed = await showConfirmation("Save data has been written. Restart the game to load it? Current unsaved progress may be lost.");
+                    if (confirmed) await restartGameFromEditor()
+                }
+            });
+
             function collectSaveFiles(e) {
                 const t = [];
                 let n;
@@ -1863,12 +1963,15 @@
             }), document.addEventListener("keydown", event => {
                 if ("Escape" !== event.key) return;
                 if (!appModalOverlay.hidden) finishAppModal(false);
-                else if (!cloudSaveOverlay.hidden) closeCloudSaveDialog()
+                else if (!cloudSaveOverlay.hidden) closeCloudSaveDialog();
+                else if (!editorOverlay.hidden) closeEditorOverlay()
             }), document.getElementById("zoom-out").addEventListener("click", () => {
                 setCanvasZoom((viewMode === "fit" ? fitCanvasScale() : viewScale) - .1)
             }), document.getElementById("zoom-in").addEventListener("click", () => {
                 setCanvasZoom((viewMode === "fit" ? fitCanvasScale() : viewScale) + .1)
-            }), document.getElementById("zoom-fit").addEventListener("click", setCanvasFit), document.getElementById("zoom-fullscreen").addEventListener("click", toggleCanvasFullscreen), document.getElementById("cloud-save-refresh").addEventListener("click", refreshCloudSaveList), window.addEventListener("resize", resizeCanvas), window.addEventListener("fullscreenchange", resizeCanvas), document.getElementById("save-export-btn").addEventListener("click", exportSaves), uploadSaveImportBtn.addEventListener("click", () => {
+            }), document.getElementById("zoom-fit").addEventListener("click", setCanvasFit), document.getElementById("zoom-fullscreen").addEventListener("click", toggleCanvasFullscreen), document.getElementById("cloud-save-refresh").addEventListener("click", refreshCloudSaveList), document.getElementById("game-editor-button").addEventListener("click", openEditorOverlay), document.getElementById("editor-close").addEventListener("click", closeEditorOverlay), editorOverlay.addEventListener("click", event => {
+                event.target === editorOverlay && closeEditorOverlay()
+            }), window.addEventListener("resize", resizeCanvas), window.addEventListener("fullscreenchange", resizeCanvas), document.getElementById("save-export-btn").addEventListener("click", exportSaves), uploadSaveImportBtn.addEventListener("click", () => {
                 uploadSaveImportInput.click()
             }), uploadSaveImportInput.addEventListener("change", e => {
                 const t = e.target.files[0];

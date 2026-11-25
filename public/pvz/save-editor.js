@@ -2,6 +2,7 @@
 (function () {
   "use strict";
 
+  const embedMode = new URLSearchParams(window.location.search).get("embed") === "1";
   const C = window.PvzSaveCore;
   if (!C) {
     document.body.innerHTML = "<p style='padding:30px;color:#ff8b8b'>缺少 pvz-save-core.js，无法启动存档编辑器。</p>";
@@ -430,7 +431,7 @@
       }, label));
     }
 
-    $("#save-browser").disabled = !state.browser;
+    $("#save-browser").disabled = !embedMode && !state.browser;
     renderTab(entry);
     setStatus(entry.dirty ? "有未保存修改；点击“下载修改后的文件”或“写入浏览器存档”。" : "");
   }
@@ -1489,22 +1490,24 @@
     }
   }
 
-  async function writeToBrowser(entry) {
+  async function writeOneToBrowser(entry, options = {}) {
+    const silent = !!options.silent;
+    const createIfMissing = !!options.createIfMissing;
     if (!state.browser) {
-      toast("请先点击“读取浏览器存档”", true);
-      return;
+      if (!silent) toast("请先点击“读取浏览器存档”", true);
+      return false;
     }
     let bytes;
     try {
       bytes = serializeEntry(entry);
     } catch (error) {
-      toast(error.message || String(error), true);
-      return;
+      if (!silent) toast(error.message || String(error), true);
+      return false;
     }
     try {
-      if (!confirm("写入浏览器存档会覆盖当前浏览器中的同名文件。请先关闭 PVZ 游戏页面，否则游戏可能再次覆盖。继续？")) return;
       if (state.browser.kind === "zip") {
-        const target = findZipTarget(entry);
+        let target = findZipTarget(entry);
+        if (!target && createIfMissing) target = "userdata/" + basename(entry.name);
         if (!target) throw new Error("浏览器 ZIP 快照中没有同名文件。");
         state.browser.files.set(target, bytes);
         const zip = new JSZip();
@@ -1528,14 +1531,123 @@
         if (!found) throw new Error("IDBFS 存档中没有同名文件。");
       }
       entry.dirty = false;
+      return true;
+    } catch (error) {
+      console.error(error);
+      if (!silent) {
+        setStatus("写入浏览器存档失败：" + (error.message || String(error)), "error");
+        toast(error.message || String(error), true);
+      }
+      return false;
+    }
+  }
+
+  async function writeToBrowser(entry) {
+    if (!state.browser) {
+      toast("请先点击“读取浏览器存档”", true);
+      return;
+    }
+    if (!confirm("写入浏览器存档会覆盖当前浏览器中的同名文件。请先关闭 PVZ 游戏页面，否则游戏可能再次覆盖。继续？")) return;
+    if (await writeOneToBrowser(entry)) {
       renderFileList();
       renderEditor();
       setStatus("已写入浏览器存档。请刷新/重新打开 PVZ 页面，让游戏重新读取。", "ok");
       toast("已写入浏览器存档");
+    }
+  }
+
+  async function readBrowserZipSnapshot() {
+    const files = new Map();
+    try {
+      const db = await openDB("pvz-browser-saves", 1, (database) => {
+        if (!database.objectStoreNames.contains("saves")) database.createObjectStore("saves");
+      });
+      const snapshot = await idbGet(db, "saves", "userdata");
+      if (snapshot && snapshot.byteLength) {
+        const zip = await JSZip.loadAsync(snapshot);
+        for (const [path, entry] of Object.entries(zip.files)) {
+          if (!entry.dir) files.set(normalizePath(path), await entry.async("uint8array"));
+        }
+      }
+      db.close();
+    } catch (_) {
+      // 没有快照就从空目录开始。
+    }
+    return files;
+  }
+
+  async function writeBrowserZipSnapshot(files) {
+    const db = await openDB("pvz-browser-saves", 1, (database) => {
+      if (!database.objectStoreNames.contains("saves")) database.createObjectStore("saves");
+    });
+    const zip = new JSZip();
+    for (const [path, data] of files) zip.file(path, data);
+    const snapshot = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE", compressionOptions: { level: 6 } });
+    await idbPut(db, "saves", "userdata", snapshot);
+    db.close();
+  }
+
+  async function writeIdbfsFallback(entries) {
+    try {
+      const db = await openDB("/saves");
+      if (!db.objectStoreNames.contains("FILE_DATA")) { db.close(); return; }
+      for (const entry of entries) {
+        let bytes;
+        try { bytes = serializeEntry(entry); } catch (_) { continue; }
+        const key = normalizePath(entry.entryName || ("userdata/" + basename(entry.name)));
+        await idbPut(db, "FILE_DATA", key, { timestamp: Date.now(), mode: 0x81a4, contents: bytes });
+      }
+      db.close();
+    } catch (_) {
+      // 该页面不使用 IDBFS，忽略即可。
+    }
+  }
+
+  async function applyAllToBrowser() {
+    const dirty = [...state.files.values()].filter((entry) => entry.dirty && entry.kind !== "legacy" && entry.kind !== "error");
+    if (!dirty.length) { toast("没有未保存的修改"); return false; }
+    try {
+      const files = state.browser && state.browser.kind === "zip"
+        ? new Map(state.browser.files)
+        : await readBrowserZipSnapshot();
+      let ok = true;
+      for (const entry of dirty) {
+        let bytes;
+        try { bytes = serializeEntry(entry); } catch (error) { ok = false; continue; }
+        let target = null;
+        if (entry.entryName && files.has(normalizePath(entry.entryName))) target = normalizePath(entry.entryName);
+        if (!target) {
+          const wanted = basename(entry.name).toLowerCase();
+          for (const path of files.keys()) {
+            if (basename(path).toLowerCase() === wanted) { target = path; break; }
+          }
+        }
+        if (!target) target = "userdata/" + basename(entry.name);
+        files.set(target, bytes);
+        entry.dirty = false;
+      }
+      await writeBrowserZipSnapshot(files);
+      await writeIdbfsFallback(dirty);
+      if (state.browser && state.browser.kind === "zip") state.browser.files = files;
+      renderFileList();
+      renderEditor();
+      if (ok) {
+        setStatus(`已将 ${dirty.length} 个修改写入浏览器存档。`, "ok");
+        toast("存档已保存");
+      }
+      return ok;
     } catch (error) {
       console.error(error);
-      setStatus("写入浏览器存档失败：" + (error.message || String(error)), "error");
+      setStatus("保存失败：" + (error.message || String(error)), "error");
       toast(error.message || String(error), true);
+      return false;
+    }
+  }
+
+  async function embedSaveAndApply() {
+    if (!(await applyAllToBrowser())) return;
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: "pvz-editor-saved" }, window.location.origin);
     }
   }
 
@@ -1848,6 +1960,7 @@
       if (entry) downloadEntry(entry);
     });
     $("#save-browser").addEventListener("click", () => {
+      if (embedMode) { embedSaveAndApply(); return; }
       const entry = state.activeId ? state.files.get(state.activeId) : null;
       if (entry) writeToBrowser(entry);
     });
@@ -1857,6 +1970,23 @@
       if (!confirm("撤销当前文件的所有修改并重新解析原始数据？")) return;
       resetEntry(entry);
     });
+  }
+
+  if (embedMode) {
+    const link = document.querySelector('a[href="pvz.html"]');
+    if (link) link.hidden = true;
+    const closeButton = document.getElementById("editor-close-embed");
+    if (closeButton) {
+      closeButton.hidden = false;
+      closeButton.addEventListener("click", () => {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: "pvz-editor-close" }, window.location.origin);
+        }
+      });
+    }
+    $("#save-browser").textContent = "保存并应用到游戏";
+    $("#browser-hint").textContent = "修改后点击“保存并应用到游戏”，会写回本机存档并提示重启游戏。";
+    loadBrowserSaves();
   }
 
   initEvents();

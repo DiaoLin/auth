@@ -160,6 +160,52 @@
       font: inherit;
     }
     #app-modal-input[hidden] { display: none }
+    #editor-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 15;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      background: rgb(0 0 0 / 78%);
+    }
+    #editor-overlay[hidden] { display: none }
+    #editor-overlay .editor-dialog {
+      display: flex;
+      flex-direction: column;
+      width: min(1100px, 96vw);
+      height: min(760px, 92vh);
+      padding: 0;
+      overflow: hidden;
+    }
+    #editor-overlay .editor-dialog header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid #4ecca3;
+    }
+    #editor-overlay .editor-dialog header h2 { margin: 0; font-size: 1.05rem }
+    #editor-overlay .editor-dialog header #editor-close {
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border: 1px solid #4ecca3;
+      border-radius: 50%;
+      color: #4ecca3;
+      background: transparent;
+      font-size: 1.5rem;
+      line-height: 1;
+      transition: background .15s, color .15s;
+    }
+    #editor-overlay .editor-dialog header #editor-close:hover {
+      color: #10251f;
+      background: #4ecca3;
+    }
+    #editor-overlay iframe { flex: 1; width: 100%; border: 0; background: #141426 }
     #cloud-save-dialog {
       width: min(460px, calc(100vw - 32px));
       max-height: 80vh;
@@ -250,6 +296,7 @@
       <button id="zoom-fit" type="button" class="active" title="自适应窗口大小">自适应</button>
       <button id="zoom-fullscreen" type="button" title="网页内全屏">⛶ 全屏</button>
       <button id="game-cloud-save-button" type="button">☁️ 云存档</button>
+      <button id="game-editor-button" type="button">🛠 存档编辑器</button>
       <button id="exit-game-button" type="button" title="退出游戏并返回开始页">退出</button>
       <span class="toolbar-spacer"></span>
       <span id="save-sync-status" role="status" aria-live="polite"></span>
@@ -262,6 +309,16 @@
       <progress id="game-progress" max="100" value="0"></progress>
     </div>
   </main>
+
+  <div id="editor-overlay" hidden>
+    <section class="modal-panel editor-dialog" role="dialog" aria-modal="true" aria-labelledby="editor-overlay-title">
+      <header>
+        <h2 id="editor-overlay-title">🛠 存档编辑器</h2>
+        <button id="editor-close" type="button" title="关闭编辑器" aria-label="关闭编辑器">×</button>
+      </header>
+      <iframe id="editor-frame" title="存档编辑器"></iframe>
+    </section>
+  </div>
 
   <div id="cloud-save-overlay" class="modal-overlay" hidden>
     <section id="cloud-save-dialog" role="dialog" aria-modal="true" aria-labelledby="cloud-save-title" tabindex="-1">
@@ -330,6 +387,8 @@
     const appModalCancel = document.getElementById("app-modal-cancel");
     const appModalConfirm = document.getElementById("app-modal-confirm");
     const saveSyncStatus = document.getElementById("save-sync-status");
+    const editorOverlay = document.getElementById("editor-overlay");
+    const editorFrame = document.getElementById("editor-frame");
     let canvasEl = document.getElementById("canvas");
     let gameStage = document.getElementById("game-stage");
     const zoomValue = document.getElementById("zoom-value");
@@ -811,6 +870,47 @@
       await launchGame("正在重启游戏…");
     }
 
+    async function restartGameFromEditor() {
+      stopGameRuntime();
+      // 编辑器已经把修改写进本机存档，不能再把游戏内存中的旧存档同步回去。
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        (document.exitFullscreen || document.webkitExitFullscreen).call(document).catch(() => {});
+      }
+      editorOverlay.hidden = true;
+      editorFrame.src = "about:blank";
+      gameLoading.hidden = false;
+      gameLoadingStatus.textContent = "正在重启游戏…";
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await launchGame("正在重启游戏…");
+    }
+
+    function openEditorOverlay() {
+      stopSaveAutosync();
+      editorOverlay.hidden = false;
+      editorFrame.src = "save-editor.html?embed=1";
+    }
+
+    function closeEditorOverlay() {
+      editorOverlay.hidden = true;
+      editorFrame.src = "about:blank";
+      if (gameRunning) startSaveAutosync();
+    }
+
+    window.addEventListener("message", async (event) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data;
+      if (!data || typeof data !== "object") return;
+      if (data.type === "pvz-editor-close") {
+        closeEditorOverlay();
+      } else if (data.type === "pvz-editor-saved") {
+        const confirmed = await showAppModal(
+          "存档已写入本机，将重启游戏以载入修改。当前未保存的游戏进度可能丢失。是否继续？",
+          { title: "重启游戏", confirm: true }
+        );
+        if (confirmed) await restartGameFromEditor();
+      }
+    });
+
     function setCloudSaveStatus(message, isError = false) {
       cloudSaveStatus.textContent = message;
       cloudSaveStatus.style.color = isError ? "#ff8b8b" : "#aaa";
@@ -1169,6 +1269,11 @@
 
     document.getElementById("start-cloud-save-button").addEventListener("click", openCloudSaveDialog);
     document.getElementById("game-cloud-save-button").addEventListener("click", openCloudSaveDialog);
+    document.getElementById("game-editor-button").addEventListener("click", openEditorOverlay);
+    document.getElementById("editor-close").addEventListener("click", closeEditorOverlay);
+    editorOverlay.addEventListener("click", (event) => {
+      if (event.target === editorOverlay) closeEditorOverlay();
+    });
     document.getElementById("cloud-save-refresh").addEventListener("click", refreshCloudSaveList);
     document.getElementById("cloud-save-close").addEventListener("click", () => {
       cloudSaveOverlay.hidden = true;
@@ -1188,6 +1293,7 @@
       if (event.key !== "Escape") return;
       if (!appModalOverlay.hidden) finishAppModal(false);
       else if (!cloudSaveOverlay.hidden) cloudSaveOverlay.hidden = true;
+      else if (!editorOverlay.hidden) closeEditorOverlay();
     });
     startButton.addEventListener("click", startGame);
     resourceUrl.addEventListener("keydown", (event) => {
