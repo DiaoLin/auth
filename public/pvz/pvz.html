@@ -78,6 +78,15 @@
     }
     #game-toolbar button:hover { background: #253b36 }
     #game-toolbar button.active { color: #10251f; background: #4ecca3 }
+    #game-toolbar select {
+      padding: 5px 7px;
+      border: 1px solid #4ecca3;
+      border-radius: 6px;
+      color: #eee;
+      background: #151526;
+      font: inherit;
+      cursor: pointer;
+    }
     #game-toolbar .toolbar-value {
       min-width: 58px;
       color: #eee;
@@ -295,6 +304,15 @@
       <button id="zoom-in" type="button" title="放大">＋</button>
       <button id="zoom-fit" type="button" class="active" title="自适应窗口大小">自适应</button>
       <button id="zoom-fullscreen" type="button" title="网页内全屏">⛶ 全屏</button>
+      <label for="speed-select">速度</label>
+      <select id="speed-select" title="游戏速度">
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="1.5">1.5×</option>
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+        <option value="5">5×</option>
+      </select>
       <button id="game-cloud-save-button" type="button">☁️ 云存档</button>
       <button id="game-editor-button" type="button">🛠 存档编辑器</button>
       <button id="exit-game-button" type="button" title="退出游戏并返回开始页">退出</button>
@@ -362,6 +380,29 @@
       printErr: (message) => console.warn(message)
     };
     Module.canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+  </script>
+  <script>
+    // 游戏倍速：缩放 Emscripten 用于计时/主循环的 performance.now。
+    (function () {
+      var saved = Number(localStorage.getItem("pvz-speed") || "1");
+      if (!isFinite(saved) || saved <= 0) saved = 1;
+      window.pvzSpeed = saved;
+      var nativeNow = performance.now.bind(performance);
+      var virtualNow = nativeNow();
+      var realLast = virtualNow;
+      performance.now = function () {
+        var real = nativeNow();
+        virtualNow += (real - realLast) * window.pvzSpeed;
+        realLast = real;
+        return virtualNow;
+      };
+      window.setGameSpeed = function (speed) {
+        speed = Number(speed);
+        if (!isFinite(speed) || speed <= 0) speed = 1;
+        window.pvzSpeed = speed;
+        try { localStorage.setItem("pvz-speed", String(speed)); } catch (error) {}
+      };
+    })();
   </script>
   <script src="pvz-portable.js" async></script>
   <script>
@@ -1270,6 +1311,9 @@
     });
     zoomFitButton.addEventListener("click", setFitMode);
     document.getElementById("zoom-fullscreen").addEventListener("click", togglePageFullscreen);
+    const speedSelect = document.getElementById("speed-select");
+    speedSelect.value = String(window.pvzSpeed || 1);
+    speedSelect.addEventListener("change", () => setGameSpeed(speedSelect.value));
     document.getElementById("exit-game-button").addEventListener("click", handleGameExit);
     window.addEventListener("resize", applyCanvasScale);
     document.addEventListener("fullscreenchange", applyCanvasScale);

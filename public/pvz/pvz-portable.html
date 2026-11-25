@@ -579,6 +579,17 @@
                 cursor: default
             }
 
+            #save-toolbar select {
+                background: rgba(30, 30, 50, .75);
+                color: #4ecca3;
+                border: 1px solid #4ecca3;
+                border-radius: 6px;
+                padding: .3em .5em;
+                font-size: .85em;
+                font-family: inherit;
+                cursor: pointer
+            }
+
             #save-toolbar button.active {
                 color: #10251f;
                 background: #4ecca3
@@ -852,7 +863,7 @@
             <p class=note>Copyright (C) 2026 Zhou Qiankang &lt;<a href=mailto:wszqkzqk@qq.com style=color:#4ecca3;text-decoration:underline>wszqkzqk@qq.com</a>></p>
         </div>
         <div id=canvas-container>
-            <div id=save-toolbar><button id=zoom-out type=button title="Zoom out">−</button><span id=zoom-value>自适应</span><button id=zoom-in type=button title="Zoom in">＋</button><button id=zoom-fit class=active type=button title="Fit to window">自适应</button><button id=zoom-fullscreen type=button title="In-page fullscreen">⛶ 全屏</button><button id=game-editor-button type=button>🛠 存档编辑器</button><button id=save-export-btn title="Export saves as ZIP">💾 Export Saves</button><button class=cloud-save-open-btn type=button>☁️ Cloud Saves</button></div><canvas height=600 id=canvas tabindex=0 width=800></canvas>
+            <div id=save-toolbar><button id=zoom-out type=button title="Zoom out">−</button><span id=zoom-value>自适应</span><button id=zoom-in type=button title="Zoom in">＋</button><button id=zoom-fit class=active type=button title="Fit to window">自适应</button><button id=zoom-fullscreen type=button title="In-page fullscreen">⛶ 全屏</button><select id=speed-select title="Game speed"><option value=0.5>0.5×</option><option value=1 selected>1×</option><option value=1.5>1.5×</option><option value=2>2×</option><option value=4>4×</option><option value=5>5×</option></select><button id=game-editor-button type=button>🛠 存档编辑器</button><button id=save-export-btn title="Export saves as ZIP">💾 Export Saves</button><button class=cloud-save-open-btn type=button>☁️ Cloud Saves</button></div><canvas height=600 id=canvas tabindex=0 width=800></canvas>
         </div><textarea autocapitalize=off autocomplete=off autocorrect=off enterkeyhint=done id=pvz-soft-keyboard spellcheck=false></textarea>
         <div id=restart-overlay hidden>
             <div class=restart-box>
@@ -911,6 +922,29 @@
             Module.canvas.addEventListener("contextmenu", function(n) {
                 n.preventDefault()
             })
+        </script>
+        <script>
+            // Game speed: scale performance.now used by Emscripten timing/main loop.
+            (function() {
+                var saved = Number(localStorage.getItem("pvz-speed") || "1");
+                if (!isFinite(saved) || saved <= 0) saved = 1;
+                window.pvzSpeed = saved;
+                var nativeNow = performance.now.bind(performance);
+                var virtualNow = nativeNow();
+                var realLast = virtualNow;
+                performance.now = function() {
+                    var real = nativeNow();
+                    virtualNow += (real - realLast) * window.pvzSpeed;
+                    realLast = real;
+                    return virtualNow
+                };
+                window.setGameSpeed = function(speed) {
+                    speed = Number(speed);
+                    if (!isFinite(speed) || speed <= 0) speed = 1;
+                    window.pvzSpeed = speed;
+                    try { localStorage.setItem("pvz-speed", String(speed)) } catch (e) {}
+                }
+            })();
         </script>
         <script src=pvz-portable.js async></script>
         <script>
@@ -2045,7 +2079,11 @@
                 setCanvasZoom((viewMode === "fit" ? fitCanvasScale() : viewScale) - .1)
             }), document.getElementById("zoom-in").addEventListener("click", () => {
                 setCanvasZoom((viewMode === "fit" ? fitCanvasScale() : viewScale) + .1)
-            }), document.getElementById("zoom-fit").addEventListener("click", setCanvasFit), document.getElementById("zoom-fullscreen").addEventListener("click", toggleCanvasFullscreen), document.getElementById("cloud-save-refresh").addEventListener("click", refreshCloudSaveList), document.getElementById("game-editor-button").addEventListener("click", openEditorOverlay), document.getElementById("editor-close").addEventListener("click", closeEditorOverlay), editorOverlay.addEventListener("click", event => {
+            }), document.getElementById("zoom-fit").addEventListener("click", setCanvasFit), document.getElementById("zoom-fullscreen").addEventListener("click", toggleCanvasFullscreen), function() {
+                var s = document.getElementById("speed-select");
+                s.value = String(window.pvzSpeed || 1);
+                s.addEventListener("change", function() { setGameSpeed(s.value) })
+            }(), document.getElementById("cloud-save-refresh").addEventListener("click", refreshCloudSaveList), document.getElementById("game-editor-button").addEventListener("click", openEditorOverlay), document.getElementById("editor-close").addEventListener("click", closeEditorOverlay), editorOverlay.addEventListener("click", event => {
                 event.target === editorOverlay && closeEditorOverlay()
             }), window.addEventListener("resize", resizeCanvas), window.addEventListener("fullscreenchange", resizeCanvas), document.getElementById("save-export-btn").addEventListener("click", exportSaves), uploadSaveImportBtn.addEventListener("click", () => {
                 uploadSaveImportInput.click()
