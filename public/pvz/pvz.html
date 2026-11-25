@@ -382,19 +382,25 @@
     Module.canvas.addEventListener("contextmenu", (event) => event.preventDefault());
   </script>
   <script>
-    // 游戏倍速：缩放 Emscripten 用于计时/主循环的 performance.now。
+    // 游戏倍速：缩放 Date.now。SDL_GetTicks 经由 _emscripten_date_now 读取它，
+    // 缩放后固定步长逻辑每帧累积的时间按比例增加，从而真正改变游戏速度。
     (function () {
-      var saved = Number(localStorage.getItem("pvz-speed") || "1");
+      var saved = 1;
+      try {
+        saved = Number(localStorage.getItem("pvz-speed") || "1");
+      } catch (error) {}
       if (!isFinite(saved) || saved <= 0) saved = 1;
       window.pvzSpeed = saved;
-      var nativeNow = performance.now.bind(performance);
-      var virtualNow = nativeNow();
-      var realLast = virtualNow;
-      performance.now = function () {
-        var real = nativeNow();
-        virtualNow += (real - realLast) * window.pvzSpeed;
-        realLast = real;
-        return virtualNow;
+      var nativeDateNow = Date.now.bind(Date);
+      var nativePerfNow = performance.now.bind(performance);
+      var baseDate = nativeDateNow();
+      var lastReal = nativePerfNow();
+      var scaledElapsed = 0;
+      Date.now = function () {
+        var real = nativePerfNow();
+        scaledElapsed += (real - lastReal) * window.pvzSpeed;
+        lastReal = real;
+        return Math.floor(baseDate + scaledElapsed);
       };
       window.setGameSpeed = function (speed) {
         speed = Number(speed);

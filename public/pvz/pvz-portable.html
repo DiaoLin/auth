@@ -924,19 +924,24 @@
             })
         </script>
         <script>
-            // Game speed: scale performance.now used by Emscripten timing/main loop.
+            // Game speed: scale Date.now, which SDL_GetTicks reads via _emscripten_date_now.
             (function() {
-                var saved = Number(localStorage.getItem("pvz-speed") || "1");
+                var saved = 1;
+                try {
+                    saved = Number(localStorage.getItem("pvz-speed") || "1")
+                } catch (e) {}
                 if (!isFinite(saved) || saved <= 0) saved = 1;
                 window.pvzSpeed = saved;
-                var nativeNow = performance.now.bind(performance);
-                var virtualNow = nativeNow();
-                var realLast = virtualNow;
-                performance.now = function() {
-                    var real = nativeNow();
-                    virtualNow += (real - realLast) * window.pvzSpeed;
-                    realLast = real;
-                    return virtualNow
+                var nativeDateNow = Date.now.bind(Date);
+                var nativePerfNow = performance.now.bind(performance);
+                var baseDate = nativeDateNow();
+                var lastReal = nativePerfNow();
+                var scaledElapsed = 0;
+                Date.now = function() {
+                    var real = nativePerfNow();
+                    scaledElapsed += (real - lastReal) * window.pvzSpeed;
+                    lastReal = real;
+                    return Math.floor(baseDate + scaledElapsed)
                 };
                 window.setGameSpeed = function(speed) {
                     speed = Number(speed);
